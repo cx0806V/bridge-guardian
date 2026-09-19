@@ -1,0 +1,1 @@
+ print("Bridge Guardian 已启动")
