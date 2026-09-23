@@ -15,7 +15,7 @@ CSV_FILE = "strain_data.csv"
 
 try:
     print("桥梁结构健康监测模拟器启动...")
-    with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
+    with open(CSV_FILE, "a", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         if f.tell() == 0:
             writer.writerow(["序号", "时间", "应变值", "报警类型"])
@@ -41,7 +41,7 @@ try:
         else:
             warn_streak = 0 
             alarm_active = False
-        with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
+        with open(CSV_FILE, "a", newline="", encoding="utf-8-sig") as f:
             writer = csv.writer(f)
             writer.writerow([count, time.strftime("%H:%M:%S"), f"{strain:.2f}",record_type])
             time.sleep(1)
