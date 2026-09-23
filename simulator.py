@@ -6,6 +6,7 @@ count = 0
 alarm_count = 0
 warn_streak =0
 CONFIRM_TIMES =3
+alarm_active = False
 
 overrun_times = []
 WINDOW_SECONDS = 60
@@ -29,14 +30,17 @@ try:
             overrun_times.append(now)
             overrun_times = [t for t in overrun_times if now - t <= WINDOW_SECONDS]
             print(f" 超限{warn_streak}/{CONFIRM_TIMES} 次 | 60秒窗口内： {len(overrun_times)}次")
-            if len(overrun_times) >= WINDOW_LIMIT:
+            if len(overrun_times) >= WINDOW_LIMIT and not alarm_active:
                 print(f"频繁超限报警： {WINDOW_SECONDS}秒内超限{len(overrun_times)}次！")
                 record_type = "频繁超限报警"
-            if warn_streak >= CONFIRM_TIMES:
+                alarm_active = True
+            if warn_streak >= CONFIRM_TIMES and not alarm_active:
                 print(f"确认报警： 连续{CONFIRM_TIMES}次超限！ 当前：{strain:.2f}με")
                 alarm_count += 1
+                alarm_active = True
         else:
-            warn_streak = 0  # 数据恢复正常，连续计数清零
+            warn_streak = 0 
+            alarm_active = False
         with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow([count, time.strftime("%H:%M:%S"), f"{strain:.2f}",record_type])
