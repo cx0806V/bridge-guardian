@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>桥梁结构健康监测大屏</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+  body { margin:0; background:#0b1c2c; color:#fff; font-family:"Microsoft YaHei"; }
+  header { display:flex; justify-content:space-between; align-items:center; padding:15px 30px;
+           background:#12314a; }
+  header h1 { margin:0; font-size:22px; }
+  header a { color:#8fd3ff; text-decoration:none; font-size:14px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:15px; padding:15px; }
+  .panel { background:#12314a; border-radius:10px; padding:15px; }
+  .big-num { font-size:56px; font-weight:bold; text-align:center; margin:10px 0; }
+  .normal { color:#4caf50; } .alarm { color:#ff4444; animation:blink 1s infinite; }
+  @keyframes blink { 50% { opacity:.4; } }
+  #gauge, #chart { width:100%; height:260px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { padding:6px; border-bottom:1px solid #2a4a68; text-align:center; }
+  th { color:#8fd3ff; }
+  .status { text-align:center; font-size:18px; padding:8px; border-radius:8px; }
+  .status.ok { background:#1b3d1b; color:#6f6; } .status.bad { background:#4a1b1b; color:#f66; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🌉 桥梁结构健康监测系统</h1>
+  <div>欢迎，{{ user }} | <a href=" ">退出</a ></div>
+</header>
+
+<div class="grid">
+  <div class="panel">
+    <h3>当前应变值</h3>
+    <div id="strainNum" class="big-num normal">--</div>
+    <div id="statusBar" class="status ok">● 状态正常</div>
+  </div>
+  <div class="panel"><h3>阈值仪表（120 με）</h3><div id="gauge"></div></div>
+  <div class="panel"><h3>报警统计</h3>
+    <div class="big-num" id="alarmCount" style="color:#ffb74d">0</div>
+    <p style="text-align:center;color:#8fd3ff">累计报警次数</p >
+  </div>
+  <div class="panel" style="grid-column:span 2"><h3>应变历史曲线</h3><div id="chart"></div></div>
+  <div class="panel"><h3>报警记录</h3>
+    <table><thead><tr><th>时间</th><th>应变值</th><th>类型</th></tr></thead>
+    <tbody id="alarmTable"></tbody></table>
+  </div>
+</div>
+
+<script>
+const gauge = echarts.init(document.getElementById('gauge'));
+const chart = echarts.init(document.getElementById('chart'));
+
+gauge.setOption({
+  series:[{ type:'gauge', min:100, max:150, splitNumber:5,
+    axisLine:{ lineStyle:{ width:14, color:[[0.4,'#4caf50'],[1,'#ff4444']] } },
+    pointer:{ width:4 }, detail:{ formatter:'{value} με', color:'#fff', fontSize:18 },
+    data:[{ value:0, name:'应变值' }] }]
+});
+
+setInterval(async () => {
+  const d = await (await fetch('/api/data')).json();
+
+  // ① 当前应变值大数字 + 状态条
+  const numEl = document.getElementById('strainNum');
+  numEl.textContent = d.strain.toFixed(2) + ' με';
+  numEl.className = 'big-num ' + (d.alarm_active ? 'alarm' : 'normal');
+  const bar = document.getElementById('statusBar');
+  bar.className = 'status ' + (d.alarm_active ? 'bad' : 'ok');
+  bar.textContent = d.alarm_active ? '⚠ ' + d.record_type : '● 状态正常';
+
+  // ② 仪表盘
+  gauge.setOption({ series:[{ data:[{ value:d.strain, name:'应变值' }] }] });
+
+  // ③ 历史曲线（红线=120阈值）
+  chart.setOption({
+    tooltip:{ trigger:'axis' },
+    xAxis:{ type:'category', data:d.history.map(h=>h[0]), axisLabel:{color:'#8fd3ff'} },
+    yAxis:{ type:'value', min:95, max:155, axisLabel:{color:'#8fd3ff'} },
+    series:[{ type:'line', data:d.history.map(h=>h[1]), smooth:true,
+      symbol:'none', lineStyle:{color:'#4fc3f7'},
+      markLine:{ data:[{ yAxis:120, lineStyle:{color:'#ff4444'},
+        label:{formatter:'阈值 120με', color:'#ff4444'} }] } }]
+  });
+
+  // ④ 报警记录表
+  document.getElementById('alarmCount').textContent = d.alarms.length;
+  document.getElementById('alarmTable').innerHTML =
+    d.alarms.slice().reverse().map(a =>
+      `<tr><td>${a[0]}</td><td>${a[1]} με</td><td style="color:#ff6666">${a[2]}</td></tr>`
+    ).join('');
+}, 1000);
+</script>
+</body>
+</html>

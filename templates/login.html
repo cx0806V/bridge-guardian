@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>桥梁结构健康监测系统 - 登录</title>
+<style>
+  body { margin:0; height:100vh; display:flex; align-items:center; justify-content:center;
+         background:linear-gradient(135deg,#0f2027,#203a43,#2c5364); font-family:"Microsoft YaHei"; }
+  .card { background:rgba(255,255,255,.95); padding:40px 50px; border-radius:12px;
+          box-shadow:0 8px 30px rgba(0,0,0,.4); width:320px; }
+  h2 { text-align:center; color:#2c5364; margin-top:0; }
+  input { width:100%; padding:12px; margin:8px 0; border:1px solid #ccc; border-radius:6px; box-sizing:border-box; }
+  button { width:100%; padding:12px; margin-top:12px; background:#2c5364; color:#fff;
+           border:none; border-radius:6px; font-size:16px; cursor:pointer; }
+  button:hover { background:#1b3a4a; }
+  .error { color:#d33; font-size:13px; text-align:center; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h2>🌉 桥梁结构健康监测系统</h2>
+    {% if error %}<p class="error">{{ error }}</p >{% endif %}
+    <form method="post">
+      <input name="username" placeholder="账号" required>
+      <input name="password" type="password" placeholder="密码" required>
+      <button type="submit">登 录</button>
+    </form>
+  </div>
+</body>
+</html>
