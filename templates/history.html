@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>历史记录 - 桥梁结构健康监测系统</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0a1930; color: #cfe8ff; font-family: "Microsoft YaHei", sans-serif; padding: 10px; min-height: 100vh; }
+    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e3a5f; padding-bottom: 8px; margin-bottom: 10px; }
+    header h1 { font-size: 22px; color: #4fc3f7; }
+    header a { color: #4fc3f7; text-decoration: none; cursor: pointer; }
+    header a:hover { text-decoration: underline; }
+    .tabs { margin-bottom: 10px; }
+    .tabs button { background: #10263f; color: #7fd4ff; border: 1px solid #1e3a5f; border-radius: 6px; padding: 6px 18px; cursor: pointer; font-size: 14px; margin-right: 8px; }
+    .tabs button.active { background: #1e88e5; color: #fff; }
+    .panel { background: #10263f; border: 1px solid #1e3a5f; border-radius: 8px; padding: 12px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 5px 6px; border-bottom: 1px solid #1e3a5f; text-align: center; }
+    th { color: #7fd4ff; }
+    td.alarm { color: #ff6b6b; }
+    .stats { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+    .stat { flex: 1; min-width: 130px; background: #0a1930; border: 1px solid #1e3a5f; border-radius: 8px; padding: 10px; text-align: center; }
+    .stat span { font-size: 24px; font-weight: bold; color: #ffb74d; display: block; }
+    .stat label { font-size: 12px; color: #7a9cc0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>📜 历史记录</h1>
+  <a href=" " onclick="location.href='/dashboard'">← 返回主画面</a >
+</header>
+
+<div class="tabs">
+  <button id="tabAlarm" class="active" onclick="switchTab('alarm')">历史报警</button>
+  <button id="tabData" onclick="switchTab('data')">历史数据比对</button>
+</div>
+
+<div id="alarmSection" class="panel">
+  <table>
+    <thead><tr><th>时间</th><th>应变值 (με)</th><th>类型</th></tr></thead>
+    <tbody id="histAlarmTable"></tbody>
+  </table>
+</div>
+
+<div id="dataSection" style="display:none">
+  <div class="stats">
+    <div class="stat"><span id="avgAll">--</span><label>平均应变 (με)</label></div>
+    <div class="stat"><span id="maxAll">--</span><label>最大值 (με)</label></div>
+    <div class="stat"><span id="minAll">--</span><label>最小值 (με)</label></div>
+    <div class="stat"><span id="overCount">--</span><label>超限次数 (>120)</label></div>
+    <div class="stat"><span id="compare">--</span><label>后半段 vs 前半段均值</label></div>
+  </div>
+  <div class="panel"><div id="histChart" style="width:100%;height:320px"></div></div>
+</div>
+
+<script>
+  function switchTab(t) {
+    const isAlarm = t === 'alarm';
+    document.getElementById('alarmSection').style.display = isAlarm ? 'block' : 'none';
+    document.getElementById('dataSection').style.display = isAlarm ? 'none' : 'block';
+    document.getElementById('tabAlarm').className = isAlarm ? 'active' : '';
+    document.getElementById('tabData').className = isAlarm ? '' : 'active';
+    if (isAlarm) loadAlarms(); else loadData();
+  }
+
+  async function loadAlarms() {
+    const res = await fetch('/api/history_alarms');
+    const rows = await res.json();
+    const html = rows.slice().reverse().map(r =>
+      `<tr><td>${r[0]}</td><td class="alarm">${r[1]}</td><td class="alarm">${r[2]}</td></tr>`
+    ).join('');
+    document.getElementById('histAlarmTable').innerHTML =
+      html || '<tr><td colspan="3">暂无历史报警</td></tr>';
+  }
+
+  let chart = null;
+  async function loadData() {
+    const res = await fetch('/api/history_data');
+    const rows = await res.json();
+    if (rows.length === 0) return;
+
+    const times = rows.map(r => r[0]);
+    const vals = rows.map(r => parseFloat(r[1]));
+
+    // ---- 统计比对 ----
+    const avg = vals.reduce((a,b)=>a+b,0) / vals.length;
+    const max = Math.max(...vals), min = Math.min(...vals);
+    const over = vals.filter(v => v > 120).length;
+
+    document.getElementById('avgAll').textContent = avg.toFixed(2);
+    document.getElementById('maxAll').textContent = max.toFixed(2);
+    document.getElementById('minAll').textContent = min.toFixed(2);
+    document.getElementById('overCount').textContent = over;
+
+    if (vals.length >= 2) {
+      const half = Math.floor(vals.length / 2);
+      const avgFront = vals.slice(0, half).reduce((a,b)=>a+b,0) / half;
+      const avgBack = vals.slice(half).reduce((a,b)=>a+b,0) / (vals.length - half);
+      const diff = avgBack - avgFront;
+      document.getElementById('compare').textContent =
+        (diff > 0.5 ? '↑ +' : diff < -0.5 ? '↓ ' : '≈ ') + diff.toFixed(2);
+    }
+
+    // ---- 历史曲线 ----
+    if (!chart) chart = echarts.init(document.getElementById('histChart'));
+    chart.setOption({
+      xAxis: { type: 'category', data: times, axisLabel: { color: '#7fd4ff' } },
+      yAxis: { type: 'value', axisLabel: { color: '#7fd4ff' } },
+      tooltip: { trigger: 'axis' },
+      dataZoom: [{ type: 'inside' }],
+      series: [{
+        name: '应变值', type: 'line', data: vals, smooth: true, showSymbol: false,
+        lineStyle: { color: '#4fc3f7', width: 2 },
+        markLine: {
+          data: [{ yAxis: 120, name: '阈值' }],
+          lineStyle: { color: '#ff4444', type: 'dashed' },
+          label: { color: '#ff6b6b', formatter: '阈值 120μ' }
+        }
+      }]
+    });
+  }
+
+  switchTab('alarm');
+</script>
+
+</body>
+</html>
