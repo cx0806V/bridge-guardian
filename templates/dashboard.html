@@ -31,6 +31,17 @@
     .clear-btn:hover { background: #cc0000; }
     .mini-btn { display: block; margin: 8px auto 0; background: #1e88e5; color: #fff; border: none; border-radius: 6px; padding: 4px 14px; cursor: pointer; font-size: 12px; }
     .mini-btn:hover { background: #1565c0; }
+    .ack-btn { border: 0; border-radius: 4px; padding: 3px 8px; background: #1e88e5; color: #fff; cursor: pointer; }
+    .connection-status { text-align: center; color: #4ade80; font-size: 12px; margin-top: 6px; }
+    .connection-status.error { color: #ff6b6b; }
+    @media (max-width: 760px) {
+      body { padding: 8px; }
+      header { align-items: flex-start; gap: 8px; flex-direction: column; }
+      .grid { grid-template-columns: 1fr; }
+      .panel { min-height: 0; }
+      .big-num { font-size: 34px; }
+      .panel[style] { grid-column: auto !important; overflow-x: auto; }
+    }
   </style>
 </head>
 <body>
@@ -39,6 +50,7 @@
   <h1>🌉 桥梁结构健康监测系统</h1>
   <div>欢迎, {{ user }}
     | <a href="/history">📜 历史记录</a>
+    | <a href="/settings">⚙ 设置</a>
     | <a class="danger" href="/logout">退出</a >
   </div>
 </header>
@@ -49,12 +61,15 @@
     <h3>当前应变值</h3>
     <div id="strainNum" class="big-num normal">--</div>
     <div id="statusBar" class="status ok">● 状态正常</div>
-    <p class="meta">采集周期：<span id="intervalShow">1</span> 秒/次 ｜ 报警阈值：120 με</p >
+    <p class="meta">采集周期：<span id="intervalShow">--</span> 秒/次 ｜ 报警阈值：<span id="thresholdShow">{{ threshold }}</span> με</p>
+    <p class="meta">最后采样：<span id="lastSampleTime">--</span> ｜ 累计采样：<span id="sampleCount">0</span> 次</p>
+    <p id="connectionStatus" class="connection-status">● 数据连接正常</p>
+    <p class="meta">数据源状态：<span id="sensorStatus">--</span></p>
     <button class="mini-btn" onclick="clearData()">🧹 一键清除数据</button>
   </div>
 
   <div class="panel">
-    <h3>阈值仪表（120 με）</h3>
+    <h3>阈值仪表（<span id="gaugeThreshold">{{ threshold }}</span> με）</h3>
     <div id="gauge"></div>
   </div>
 
@@ -75,7 +90,7 @@
       <button class="clear-btn" onclick="clearAlarms()">🗑 清除报警</button>
     </h3>
     <table>
-      <thead><tr><th>时间</th><th>应变值 (με)</th><th>类型</th></tr></thead>
+      <thead><tr><th>时间</th><th>应变值 (με)</th><th>等级</th><th>处理状态</th><th>操作</th></tr></thead>
       <tbody id="alarmTable"></tbody>
     </table>
   </div>
@@ -83,8 +98,8 @@
 </div>
 
 <script>
-  const gaugeChart = echarts.init(document.getElementById('gauge'));
-  const lineChart = echarts.init(document.getElementById('chart'));
+  const gaugeChart = echarts.init(document.getElementById('gauge')); // 应变仪表盘实例
+  const lineChart = echarts.init(document.getElementById('chart')); // 实时曲线实例
 
   gaugeChart.setOption({
     series: [{
@@ -104,53 +119,106 @@
       name: '应变值', type: 'line', data: [], smooth: true, showSymbol: false,
       lineStyle: { color: '#4fc3f7', width: 2 },
       markLine: {
-        data: [{ yAxis: 120, name: '阈值' }],
+        data: [{ yAxis: {{ threshold }}, name: '阈值' }],
         lineStyle: { color: '#ff4444', type: 'dashed' },
-        label: { color: '#ff6b6b', formatter: '阈值 120μ' }
+        label: { color: '#ff6b6b', formatter: '阈值 {{ threshold }}μ' }
       }
     }]
   });
 
+  function setConnectionStatus(isConnected, message) {
+    const statusElement = document.getElementById('connectionStatus'); // 数据连接状态显示元素
+    statusElement.className = isConnected ? 'connection-status' : 'connection-status error';
+    statusElement.textContent = message;
+  }
+
   async function refresh() {
     try {
-      const res = await fetch('/api/data');
-      const d = await res.json();
+      const response = await fetch('/api/data'); // 获取实时监测数据的响应
+      if (!response.ok) throw new Error(`请求失败：${response.status}`);
+      const dashboardData = await response.json(); // 后端返回的大屏数据
 
-      const strainNum = document.getElementById('strainNum');
-      const statusBar = document.getElementById('statusBar');
-      strainNum.textContent = d.strain.toFixed(2) + ' με';
-      if (d.strain > d.threshold) {
-        strainNum.className = 'big-num danger';
-        statusBar.className = 'status bad';
-        statusBar.textContent = '⚠ 超限报警';
+      const strainElement = document.getElementById('strainNum'); // 当前应变值显示元素
+      const alarmStatusElement = document.getElementById('statusBar'); // 报警状态显示元素
+      strainElement.textContent = dashboardData.strain.toFixed(2) + ' με';
+      if (dashboardData.strain > dashboardData.threshold) {
+        strainElement.className = 'big-num danger';
+        alarmStatusElement.className = 'status bad';
+        alarmStatusElement.textContent = '⚠ 超限报警';
       } else {
-        strainNum.className = 'big-num normal';
-        statusBar.className = 'status ok';
-        statusBar.textContent = '● 状态正常';
+        strainElement.className = 'big-num normal';
+        alarmStatusElement.className = 'status ok';
+        alarmStatusElement.textContent = '● 状态正常';
       }
 
-      document.getElementById('intervalShow').textContent = d.interval;
-      gaugeChart.setOption({ series: [{ data: [{ value: d.strain }] }] });
-      document.getElementById('alarmCount').textContent = d.alarms.length;
+      document.getElementById('intervalShow').textContent = dashboardData.interval;
+      document.getElementById('thresholdShow').textContent = dashboardData.threshold;
+      document.getElementById('gaugeThreshold').textContent = dashboardData.threshold;
+      document.getElementById('lastSampleTime').textContent = dashboardData.last_sample_time;
+      document.getElementById('sampleCount').textContent = dashboardData.sample_count;
+      document.getElementById('sensorStatus').textContent = dashboardData.sensor_status;
+      gaugeChart.setOption({ series: [{ data: [{ value: dashboardData.strain }] }] });
+      document.getElementById('alarmCount').textContent = dashboardData.alarms.length;
 
       lineChart.setOption({
-        xAxis: { data: d.history.map(h => h.time) },
-        series: [{ data: d.history.map(h => h.strain) }]
+        xAxis: { data: dashboardData.history.map(historyItem => historyItem.time) },
+        series: [{
+          data: dashboardData.history.map(historyItem => historyItem.strain),
+          markLine: {
+            data: [{ yAxis: dashboardData.threshold, name: '阈值' }],
+            label: { formatter: `阈值 ${dashboardData.threshold}μ` }
+          }
+        }]
       });
 
-      document.getElementById('alarmTable').innerHTML = d.alarms.map(a =>
-        `<tr><td>${a.time}</td><td class="alarm">${a.strain}</td><td class="alarm">${a.type}</td></tr>`
+      document.getElementById('alarmTable').innerHTML = dashboardData.alarms.map(alarmItem =>
+        `<tr><td>${alarmItem.time}</td><td class="alarm">${alarmItem.strain}</td><td class="alarm">${alarmItem.type}</td><td>${alarmItem.status}</td><td>${alarmItem.status === '未处理' ? `<button class="ack-btn" onclick="acknowledgeAlarm(${alarmItem.id})">确认处理</button>` : '已完成'}</td></tr>`
       ).join('');
-    } catch (e) {
-      console.error('获取数据失败', e);
+      setConnectionStatus(true, '● 数据连接正常');
+    } catch (error) {
+      console.error('获取数据失败', error);
+      setConnectionStatus(false, '⚠ 数据连接失败，请检查服务是否运行');
     }
   }
 
-  async function clearAlarms() { await fetch('/api/clear_alarms'); refresh(); }
-  async function clearData()   { await fetch('/api/clear_data');   refresh(); }
+  async function clearAlarms() {
+    if (!confirm('确定清除当前报警和 CSV 历史报警吗？')) return;
+    try {
+      const response = await fetch('/api/clear_alarms', { method: 'POST' }); // 清除报警请求的响应
+      if (!response.ok) throw new Error(`请求失败：${response.status}`);
+      refresh();
+    } catch (error) {
+      console.error('清除报警失败', error);
+      setConnectionStatus(false, '⚠ 清除报警失败');
+    }
+  }
+
+  async function acknowledgeAlarm(alarmId) {
+    try {
+      const response = await fetch(`/api/acknowledge_alarm/${alarmId}`, { method: 'POST' }); // 确认处理报警的响应
+      if (!response.ok) throw new Error(`请求失败：${response.status}`);
+      refresh();
+    } catch (error) {
+      console.error('确认报警失败', error);
+      setConnectionStatus(false, '⚠ 确认报警失败');
+    }
+  }
+
+  async function clearData() {
+    if (!confirm('确定清除当前数据和 CSV 历史数据吗？')) return;
+    try {
+      const response = await fetch('/api/clear_data', { method: 'POST' }); // 清除数据请求的响应
+      if (!response.ok) throw new Error(`请求失败：${response.status}`);
+      refresh();
+    } catch (error) {
+      console.error('清除数据失败', error);
+      setConnectionStatus(false, '⚠ 清除数据失败');
+    }
+  }
 
   refresh();
   setInterval(refresh, 1000);
+  window.addEventListener('resize', () => { gaugeChart.resize(); lineChart.resize(); });
 </script>
 
 </body>

@@ -23,6 +23,17 @@
     .stat { flex: 1; min-width: 130px; background: #0a1930; border: 1px solid #1e3a5f; border-radius: 8px; padding: 10px; text-align: center; }
     .stat span { font-size: 24px; font-weight: bold; color: #ffb74d; display: block; }
     .stat label { font-size: 12px; color: #7a9cc0; }
+    .message { color: #ff6b6b; text-align: center; margin: 10px 0; min-height: 18px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
+    .filters input, .filters button { padding: 6px 10px; border: 1px solid #1e3a5f; border-radius: 6px; background: #10263f; color: #cfe8ff; }
+    .filters button { cursor: pointer; background: #1e88e5; border: 0; }
+    @media (max-width: 760px) {
+      body { padding: 8px; }
+      header { align-items: flex-start; gap: 8px; flex-direction: column; }
+      .tabs button { margin-bottom: 6px; }
+      .stat { min-width: 100%; }
+      .panel { overflow-x: auto; }
+    }
   </style>
 </head>
 <body>
@@ -37,9 +48,18 @@
   <button id="tabData" onclick="switchTab('data')">历史数据比对</button>
 </div>
 
+<div class="filters">
+  <label>开始时间 <input id="startTime" type="datetime-local"></label>
+  <label>结束时间 <input id="endTime" type="datetime-local"></label>
+  <button onclick="applyFilter()">查询</button>
+  <button onclick="exportHistory()">导出当前结果</button>
+</div>
+
+<p id="historyMessage" class="message"></p>
+
 <div id="alarmSection" class="panel">
   <table>
-    <thead><tr><th>时间</th><th>应变值 (με)</th><th>类型</th></tr></thead>
+    <thead><tr><th>时间</th><th>应变值 (με)</th><th>等级</th><th>处理状态</th></tr></thead>
     <tbody id="histAlarmTable"></tbody>
   </table>
 </div>
@@ -49,80 +69,118 @@
     <div class="stat"><span id="avgAll">--</span><label>平均应变 (με)</label></div>
     <div class="stat"><span id="maxAll">--</span><label>最大值 (με)</label></div>
     <div class="stat"><span id="minAll">--</span><label>最小值 (με)</label></div>
-    <div class="stat"><span id="overCount">--</span><label>超限次数 (>120)</label></div>
+    <div class="stat"><span id="overCount">--</span><label>超限次数 (>{{ threshold }})</label></div>
     <div class="stat"><span id="compare">--</span><label>后半段 vs 前半段均值</label></div>
   </div>
   <div class="panel"><div id="histChart" style="width:100%;height:320px"></div></div>
 </div>
 
 <script>
-  function switchTab(t) {
-    const isAlarm = t === 'alarm';
-    document.getElementById('alarmSection').style.display = isAlarm ? 'block' : 'none';
-    document.getElementById('dataSection').style.display = isAlarm ? 'none' : 'block';
-    document.getElementById('tabAlarm').className = isAlarm ? 'active' : '';
-    document.getElementById('tabData').className = isAlarm ? '' : 'active';
-    if (isAlarm) loadAlarms(); else loadData();
+  const threshold = {{ threshold }}; // 后端设定的报警阈值
+  let currentTab = 'alarm'; // 当前打开的历史记录标签页
+
+  function showHistoryMessage(message) {
+    document.getElementById('historyMessage').textContent = message; // 历史页面错误提示
+  }
+
+  function switchTab(tabName) {
+    currentTab = tabName;
+    const isAlarmTab = tabName === 'alarm'; // 当前是否显示报警标签页
+    document.getElementById('alarmSection').style.display = isAlarmTab ? 'block' : 'none';
+    document.getElementById('dataSection').style.display = isAlarmTab ? 'none' : 'block';
+    document.getElementById('tabAlarm').className = isAlarmTab ? 'active' : '';
+    document.getElementById('tabData').className = isAlarmTab ? '' : 'active';
+    showHistoryMessage('');
+    if (isAlarmTab) loadAlarms(); else loadData();
+  }
+
+  function getQueryString() {
+    const startTime = document.getElementById('startTime').value.replace('T', ' '); // 筛选开始时间
+    const endTime = document.getElementById('endTime').value.replace('T', ' '); // 筛选结束时间
+    return new URLSearchParams({ start: startTime, end: endTime }).toString();
+  }
+
+  function applyFilter() {
+    if (currentTab === 'alarm') loadAlarms(); else loadData();
+  }
+
+  function exportHistory() {
+    const recordType = currentTab === 'alarm' ? 'alarms' : 'data'; // 当前导出的历史记录类型
+    window.location.href = `/api/export/${recordType}?${getQueryString()}`;
   }
 
   async function loadAlarms() {
-    const res = await fetch('/api/history_alarms');
-    const rows = await res.json();
-    const html = rows.slice().reverse().map(r =>
-      `<tr><td>${r[0]}</td><td class="alarm">${r[1]}</td><td class="alarm">${r[2]}</td></tr>`
-    ).join('');
-    document.getElementById('histAlarmTable').innerHTML =
-      html || '<tr><td colspan="3">暂无历史报警</td></tr>';
+    try {
+      const response = await fetch(`/api/history_alarms?${getQueryString()}`); // 获取筛选后历史报警的响应
+      if (!response.ok) throw new Error(`请求失败：${response.status}`);
+      const alarmRows = await response.json(); // CSV 中的历史报警行
+      const tableHtml = alarmRows.slice().reverse().map(alarmRow =>
+        `<tr><td>${alarmRow[0]}</td><td class="alarm">${alarmRow[1]}</td><td class="alarm">${alarmRow[2]}</td><td>${alarmRow[3] || '历史记录'}</td></tr>`
+      ).join('');
+      document.getElementById('histAlarmTable').innerHTML =
+        tableHtml || '<tr><td colspan="3">暂无历史报警</td></tr>';
+    } catch (error) {
+      console.error('读取历史报警失败', error);
+      showHistoryMessage('历史报警读取失败，请检查 CSV 文件和服务状态。');
+    }
   }
 
-  let chart = null;
+  let historyChart = null; // 历史曲线图表实例
   async function loadData() {
-    const res = await fetch('/api/history_data');
-    const rows = await res.json();
-    if (rows.length === 0) return;
+    try {
+      const response = await fetch(`/api/history_data?${getQueryString()}`); // 获取筛选后历史数据的响应
+      if (!response.ok) throw new Error(`请求失败：${response.status}`);
+      const dataRows = await response.json(); // CSV 中的历史数据行
+      if (dataRows.length === 0) {
+        showHistoryMessage('暂无历史数据。');
+        return;
+      }
 
-    const times = rows.map(r => r[0]);
-    const vals = rows.map(r => parseFloat(r[1]));
+      const sampleTimes = dataRows.map(dataRow => dataRow[0]); // 历史采样时间列表
+      const strainValues = dataRows.map(dataRow => parseFloat(dataRow[1])); // 历史应变数值列表
+      const averageValue = strainValues.reduce((total, value) => total + value, 0) / strainValues.length;
+      const maximumValue = Math.max(...strainValues); // 历史最大应变值
+      const minimumValue = Math.min(...strainValues); // 历史最小应变值
+      const overThresholdCount = strainValues.filter(value => value > threshold).length;
 
-    // ---- 统计比对 ----
-    const avg = vals.reduce((a,b)=>a+b,0) / vals.length;
-    const max = Math.max(...vals), min = Math.min(...vals);
-    const over = vals.filter(v => v > 120).length;
+      document.getElementById('avgAll').textContent = averageValue.toFixed(2);
+      document.getElementById('maxAll').textContent = maximumValue.toFixed(2);
+      document.getElementById('minAll').textContent = minimumValue.toFixed(2);
+      document.getElementById('overCount').textContent = overThresholdCount;
 
-    document.getElementById('avgAll').textContent = avg.toFixed(2);
-    document.getElementById('maxAll').textContent = max.toFixed(2);
-    document.getElementById('minAll').textContent = min.toFixed(2);
-    document.getElementById('overCount').textContent = over;
+      if (strainValues.length >= 2) {
+        const midpoint = Math.floor(strainValues.length / 2); // 前后两段的分界位置
+        const frontAverage = strainValues.slice(0, midpoint).reduce((total, value) => total + value, 0) / midpoint;
+        const backAverage = strainValues.slice(midpoint).reduce((total, value) => total + value, 0) / (strainValues.length - midpoint);
+        const averageDifference = backAverage - frontAverage;
+        document.getElementById('compare').textContent =
+          (averageDifference > 0.5 ? '↑ +' : averageDifference < -0.5 ? '↓ ' : '≈ ') + averageDifference.toFixed(2);
+      }
 
-    if (vals.length >= 2) {
-      const half = Math.floor(vals.length / 2);
-      const avgFront = vals.slice(0, half).reduce((a,b)=>a+b,0) / half;
-      const avgBack = vals.slice(half).reduce((a,b)=>a+b,0) / (vals.length - half);
-      const diff = avgBack - avgFront;
-      document.getElementById('compare').textContent =
-        (diff > 0.5 ? '↑ +' : diff < -0.5 ? '↓ ' : '≈ ') + diff.toFixed(2);
+      if (!historyChart) historyChart = echarts.init(document.getElementById('histChart'));
+      historyChart.setOption({
+        xAxis: { type: 'category', data: sampleTimes, axisLabel: { color: '#7fd4ff' } },
+        yAxis: { type: 'value', axisLabel: { color: '#7fd4ff' } },
+        tooltip: { trigger: 'axis' },
+        dataZoom: [{ type: 'inside' }],
+        series: [{
+          name: '应变值', type: 'line', data: strainValues, smooth: true, showSymbol: false,
+          lineStyle: { color: '#4fc3f7', width: 2 },
+          markLine: {
+            data: [{ yAxis: threshold, name: '阈值' }],
+            lineStyle: { color: '#ff4444', type: 'dashed' },
+            label: { color: '#ff6b6b', formatter: `阈值 ${threshold}μ` }
+          }
+        }]
+      });
+    } catch (error) {
+      console.error('读取历史数据失败', error);
+      showHistoryMessage('历史数据读取失败，请检查 CSV 文件和服务状态。');
     }
-
-    // ---- 历史曲线 ----
-    if (!chart) chart = echarts.init(document.getElementById('histChart'));
-    chart.setOption({
-      xAxis: { type: 'category', data: times, axisLabel: { color: '#7fd4ff' } },
-      yAxis: { type: 'value', axisLabel: { color: '#7fd4ff' } },
-      tooltip: { trigger: 'axis' },
-      dataZoom: [{ type: 'inside' }],
-      series: [{
-        name: '应变值', type: 'line', data: vals, smooth: true, showSymbol: false,
-        lineStyle: { color: '#4fc3f7', width: 2 },
-        markLine: {
-          data: [{ yAxis: 120, name: '阈值' }],
-          lineStyle: { color: '#ff4444', type: 'dashed' },
-          label: { color: '#ff6b6b', formatter: '阈值 120μ' }
-        }
-      }]
-    });
   }
 
   switchTab('alarm');
+  window.addEventListener('resize', () => { if (historyChart) historyChart.resize(); });
 </script>
 
 </body>

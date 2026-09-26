@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>系统设置 - 桥梁结构健康监测系统</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 20px; background: #0a1930; color: #cfe8ff; font-family: "Microsoft YaHei", sans-serif; }
+    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e3a5f; padding-bottom: 12px; }
+    h1 { margin: 0; font-size: 22px; color: #4fc3f7; }
+    a { color: #4fc3f7; text-decoration: none; }
+    .card { max-width: 520px; margin: 30px auto; padding: 24px; border: 1px solid #1e3a5f; border-radius: 10px; background: #10263f; }
+    label { display: block; margin-top: 16px; color: #7fd4ff; }
+    input { width: 100%; margin-top: 6px; padding: 10px; border: 1px solid #1e3a5f; border-radius: 6px; background: #0a1930; color: #cfe8ff; font-size: 15px; }
+    button { margin-top: 22px; width: 100%; padding: 10px; border: 0; border-radius: 6px; background: #1e88e5; color: #fff; cursor: pointer; font-size: 15px; }
+    .tip { color: #7a9cc0; font-size: 13px; line-height: 1.7; }
+    #message { min-height: 20px; margin-top: 12px; text-align: center; color: #4ade80; }
+    #message.error { color: #ff6b6b; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>⚙ 系统设置</h1>
+    <a href="/dashboard">← 返回主画面</a>
+  </header>
+  <main class="card">
+    <p class="tip">设置会立即生效，并记录到 <code>config_log.csv</code>，方便答辩时追溯参数变更。</p>
+    <form id="settingsForm">
+      <label for="threshold">报警阈值（με）</label>
+      <input id="threshold" type="number" min="1" max="200" step="0.1" required>
+      <label for="interval">采集周期（秒）</label>
+      <input id="interval" type="number" min="0.1" max="60" step="0.1" required>
+      <button type="submit">保存设置</button>
+    </form>
+    <p id="message"></p>
+  </main>
+  <script>
+    const messageElement = document.getElementById('message'); // 设置结果提示元素
+
+    function showMessage(message, isError = false) {
+      messageElement.textContent = message;
+      messageElement.className = isError ? 'error' : '';
+    }
+
+    async function loadSettings() {
+      try {
+        const response = await fetch('/api/settings'); // 获取当前设置的响应
+        if (!response.ok) throw new Error(`请求失败：${response.status}`);
+        const settingsData = await response.json(); // 当前生效的设置数据
+        document.getElementById('threshold').value = settingsData.threshold;
+        document.getElementById('interval').value = settingsData.interval;
+      } catch (error) {
+        console.error('读取设置失败', error);
+        showMessage('读取设置失败，请检查服务状态。', true);
+      }
+    }
+
+    document.getElementById('settingsForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const thresholdValue = Number(document.getElementById('threshold').value); // 用户输入的报警阈值
+      const intervalValue = Number(document.getElementById('interval').value); // 用户输入的采集周期
+      try {
+        const response = await fetch('/api/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ threshold: thresholdValue, interval: intervalValue })
+        });
+        const result = await response.json(); // 保存设置后的服务响应
+        if (!response.ok) throw new Error(result.error);
+        showMessage('设置已保存并立即生效。');
+      } catch (error) {
+        console.error('保存设置失败', error);
+        showMessage(error.message || '保存设置失败。', true);
+      }
+    });
+
+    loadSettings();
+  </script>
+</body>
+</html>
