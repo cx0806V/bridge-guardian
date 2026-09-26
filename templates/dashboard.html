@@ -9,7 +9,7 @@
     body { background: #0a1930; color: #cfe8ff; font-family: "Microsoft YaHei", sans-serif; padding: 10px; min-height: 100vh; }
     header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e3a5f; padding-bottom: 8px; margin-bottom: 10px; }
     header h1 { font-size: 22px; color: #4fc3f7; }
-    header a { color: #4fc3f7; text-decoration: none; margin-left: 8px; cursor: pointer; }
+    header a { color: #4fc3f7; text-decoration: none; margin-left: 8px; }
     header a:hover { text-decoration: underline; }
     header a.danger { color: #ff6b6b; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -38,8 +38,8 @@
 <header>
   <h1>🌉 桥梁结构健康监测系统</h1>
   <div>欢迎, {{ user }}
-    | <a href=" " onclick="location.href='/history'">📜 历史记录</a >
-    | <a class="danger" href="javascript:void(0)" onclick="location.href='/logout'">退出</a >
+    | <a href=" ">📜 历史记录</a >
+    | <a class="danger" href="/logout">退出</a >
   </div>
 </header>
 
