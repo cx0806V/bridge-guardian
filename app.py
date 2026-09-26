@@ -1,5 +1,6 @@
 from flask import Flask, request, session, redirect, render_template, jsonify, Response
 import threading, time, random, csv, os
+from collections import deque
 from datetime import datetime
 
 app = Flask(__name__)
@@ -38,6 +39,25 @@ class Simulator:
         }
         self.value = 80.0       # 模拟传感器当前读数
         self.alarming = False   # 边沿触发标志：防止持续超限刷屏
+        self._load_settings()   # 启动时恢复上次保存的参数
+
+    def _load_settings(self):
+        """从参数变更记录中恢复最近一次有效设置。"""
+        if not os.path.exists(CSV_CONFIG):
+            return
+        try:
+            with open(CSV_CONFIG, newline="", encoding="utf-8-sig") as file_handle:
+                rows = list(csv.reader(file_handle))
+            if len(rows) < 2:
+                return
+            latest_row = rows[-1]  # 最后一行是最近一次设置记录
+            threshold_value = float(latest_row[1])
+            interval_value = float(latest_row[2])
+            if 1 <= threshold_value <= 200 and 0.1 <= interval_value <= 60:
+                self.latest["threshold"] = threshold_value
+                self.latest["interval"] = interval_value
+        except (OSError, UnicodeError, csv.Error, ValueError, IndexError) as error:
+            print("读取历史设置失败，已使用默认参数:", error)
 
     def start(self):
         threading.Thread(target=self._loop, daemon=True).start()
@@ -141,8 +161,29 @@ class Simulator:
             for alarm in self.latest["alarms"]:
                 if alarm["id"] == alarm_id:
                     alarm["status"] = "已处理"
+                    self._update_alarm_status(alarm)
                     return True
         return False
+
+    def _update_alarm_status(self, alarm):
+        """将当前报警的处理状态同步更新到历史 CSV。"""
+        if not os.path.exists(CSV_ALARM):
+            return
+        with open(CSV_ALARM, newline="", encoding="utf-8-sig") as file_handle:
+            rows = list(csv.reader(file_handle))
+        if not rows:
+            return
+
+        rows[0] = ["时间", "应变值(με)", "等级", "处理状态"]
+        for row in rows[1:]:
+            if len(row) < 4:
+                row.extend(["历史记录"] * (4 - len(row)))
+            if row[0] == alarm["time"] and row[1] == str(alarm["strain"]):
+                row[3] = "已处理"
+                break
+
+        with open(CSV_ALARM, "w", newline="", encoding="utf-8-sig") as file_handle:
+            csv.writer(file_handle).writerows(rows)
 
 
 simulator = Simulator()
@@ -178,18 +219,28 @@ def read_csv_tail(path, limit=500):
     return rows[-limit:]
 
 
-def filter_history_rows(rows, query_args):
-    """按开始和结束时间筛选已读取的历史记录。"""
-    start_time = query_args.get("start", "")  # 前端传入的开始时间
-    end_time = query_args.get("end", "")  # 前端传入的结束时间
+def read_history_rows(path, query_args, limit=500):
+    """读取历史记录；时间筛选时遍历全文件以保证结果完整。"""
+    if not query_args.get("start") and not query_args.get("end"):
+        return read_csv_tail(path, limit)
+    if not os.path.exists(path):
+        return []
+
+    start_time = query_args.get("start", "")
+    end_time = query_args.get("end", "")
     if len(start_time) == 16:
-        start_time += ":00"  # datetime-local 未填写秒时从该分钟开始筛选
+        start_time += ":00"
     if len(end_time) == 16:
-        end_time += ":59"  # datetime-local 未填写秒时包含该分钟全部数据
-    return [
-        row for row in rows
-        if row and (not start_time or row[0] >= start_time) and (not end_time or row[0] <= end_time)
-    ]
+        end_time += ":59"
+
+    matching_rows = deque(maxlen=limit)  # 仅保留最近 limit 条匹配记录
+    with open(path, newline="", encoding="utf-8-sig") as file_handle:
+        reader = csv.reader(file_handle)
+        next(reader, None)  # 跳过 CSV 表头
+        for row in reader:
+            if row and (not start_time or row[0] >= start_time) and (not end_time or row[0] <= end_time):
+                matching_rows.append(row)
+    return list(matching_rows)
 
 
 # ================= 页面路由 =================
@@ -292,7 +343,7 @@ def history_alarms():
     """历史报警信息查看（读 alarm_log.csv 最后500条）"""
     try:
         with simulator.lock:
-            rows = filter_history_rows(read_csv_tail(CSV_ALARM), request.args)
+            rows = read_history_rows(CSV_ALARM, request.args)
         return jsonify(rows)
     except (OSError, UnicodeError, csv.Error) as error:
         return jsonify({"error": f"读取历史报警失败：{error}"}), 500
@@ -302,7 +353,7 @@ def history_data():
     """历史数据查看比对（读 data_log.csv 最后500条）"""
     try:
         with simulator.lock:
-            rows = filter_history_rows(read_csv_tail(CSV_DATA), request.args)
+            rows = read_history_rows(CSV_DATA, request.args)
         return jsonify(rows)
     except (OSError, UnicodeError, csv.Error) as error:
         return jsonify({"error": f"读取历史数据失败：{error}"}), 500
@@ -319,7 +370,7 @@ def export_history(record_type):
 
     path, header = file_map[record_type]
     with simulator.lock:
-        rows = filter_history_rows(read_csv_tail(path), request.args)
+        rows = read_history_rows(path, request.args)
     output_lines = [header] + rows
     text_rows = []
     for row in output_lines:
