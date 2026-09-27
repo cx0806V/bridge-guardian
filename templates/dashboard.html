@@ -2,109 +2,180 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <title>桥梁健康监测大屏</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>桥体卫士 — 桥梁结构健康监测大屏</title>
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
   <style>
+    :root {
+      --bg: #081120; --panel: #0f2038; --border: #1c3a5e; --line: #21446b;
+      --text: #cfe8ff; --muted: #7a9cc0; --accent: #4fc3f7;
+      --ok: #4ade80; --warn: #fbbf24; --alarm: #fb923c; --crit: #ef4444;
+    }
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #0a1930; color: #cfe8ff; font-family: "Microsoft YaHei", sans-serif; padding: 10px; min-height: 100vh; }
-    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e3a5f; padding-bottom: 8px; margin-bottom: 10px; }
-    header h1 { font-size: 22px; color: #4fc3f7; }
-    header a { color: #4fc3f7; text-decoration: none; margin-left: 8px; }
-    header a:hover { text-decoration: underline; }
-    header a.danger { color: #ff6b6b; }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-    .panel { background: #10263f; border: 1px solid #1e3a5f; border-radius: 8px; padding: 12px; min-height: 220px; }
-    .panel h3 { font-size: 15px; color: #7fd4ff; margin-bottom: 8px; }
-    .big-num { font-size: 42px; font-weight: bold; text-align: center; }
-    .big-num.normal { color: #4ade80; }
-    .big-num.danger { color: #ff4444; }
-    .status { text-align: center; margin-top: 6px; }
-    .status.ok { color: #4ade80; }
-    .status.bad { color: #ff4444; }
-    .meta { text-align: center; color: #7a9cc0; font-size: 12px; margin-top: 8px; }
-    #chart, #gauge { width: 100%; height: 220px; }
+    body { background: radial-gradient(1200px 600px at 50% -10%, #0e2440 0%, var(--bg) 60%);
+      color: var(--text); font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+      padding: 12px; min-height: 100vh; }
+    header { display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--border); padding: 6px 2px 12px; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+    header h1 { font-size: 22px; color: var(--accent); letter-spacing: 1px; }
+    header .nav a { color: var(--accent); text-decoration: none; margin-left: 12px; font-size: 14px; }
+    header .nav a:hover { text-decoration: underline; }
+    header .nav a.danger { color: var(--crit); }
+    .source-badge { padding: 3px 10px; border-radius: 20px; font-size: 12px;
+      background: #123052; color: var(--accent); border: 1px solid var(--line); }
+    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 14px; position: relative; }
+    .panel h3 { font-size: 14px; color: #8fd8ff; margin-bottom: 10px; font-weight: 600;
+      display: flex; align-items: center; gap: 6px; }
+    .panel h3 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+      box-shadow: 0 0 8px var(--accent); }
+    .full { grid-column: 1 / -1; }
+
+    /* 风险状态卡 */
+    .risk-card { display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 150px; border-radius: 10px; border: 1px solid var(--line);
+      background: linear-gradient(180deg, rgba(28,58,94,.35), rgba(15,32,56,.6)); }
+    .risk-label { font-size: 15px; letter-spacing: 2px; font-weight: 700; }
+    .risk-value { font-size: 40px; font-weight: 800; line-height: 1.1; margin: 4px 0; }
+    .risk-unit { font-size: 14px; color: var(--muted); }
+    .risk-normal { color: var(--ok); } .risk-warn { color: var(--warn); }
+    .risk-alarm { color: var(--alarm); } .risk-crit { color: var(--crit); }
+
+    /* 设备健康度 */
+    .health-row { display: flex; justify-content: space-between; padding: 7px 0;
+      border-bottom: 1px dashed var(--line); font-size: 13px; }
+    .health-row:last-child { border-bottom: none; }
+    .health-row .k { color: var(--muted); }
+    .health-row .v { color: var(--text); }
+    .state-online { color: var(--ok); } .state-offline { color: var(--crit); }
+
+    /* 报警统计 */
+    .stat-big { font-size: 34px; font-weight: 800; text-align: center; color: #ffb74d; }
+    .stat-grid { display: flex; gap: 8px; margin-top: 10px; }
+    .stat-item { flex: 1; text-align: center; padding: 8px 4px; border-radius: 8px;
+      background: rgba(10,25,48,.6); border: 1px solid var(--line); }
+    .stat-item .n { font-size: 22px; font-weight: 700; }
+    .stat-item .t { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .c-warn { color: var(--warn); } .c-alarm { color: var(--alarm); } .c-crit { color: var(--crit); }
+
+    #chart { width: 100%; height: 240px; }
+    #gauge { width: 100%; height: 240px; }
+
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { padding: 4px 6px; border-bottom: 1px solid #1e3a5f; text-align: center; }
-    th { color: #7fd4ff; }
-    td.alarm { color: #ff6b6b; }
-    .clear-btn { float: right; background: #ff4444; color: #fff; border: none; border-radius: 6px; padding: 3px 12px; cursor: pointer; font-size: 12px; }
-    .clear-btn:hover { background: #cc0000; }
-    .mini-btn { display: block; margin: 8px auto 0; background: #1e88e5; color: #fff; border: none; border-radius: 6px; padding: 4px 14px; cursor: pointer; font-size: 12px; }
-    .mini-btn:hover { background: #1565c0; }
-    .ack-btn { border: 0; border-radius: 4px; padding: 3px 8px; background: #1e88e5; color: #fff; cursor: pointer; }
-    .connection-status { text-align: center; color: #4ade80; font-size: 12px; margin-top: 6px; }
-    .connection-status.error { color: #ff6b6b; }
-    @media (max-width: 760px) {
-      body { padding: 8px; }
-      header { align-items: flex-start; gap: 8px; flex-direction: column; }
+    th, td { padding: 6px 6px; border-bottom: 1px solid var(--line); text-align: center; }
+    th { color: #8fd8ff; font-weight: 600; }
+    td.lv-warn { color: var(--warn); } td.lv-alarm { color: var(--alarm); } td.lv-crit { color: var(--crit); }
+    .reason-cell { text-align: left; color: var(--muted); max-width: 260px; }
+
+    .btn { border: 0; border-radius: 6px; padding: 5px 12px; cursor: pointer;
+      color: #fff; font-size: 12px; }
+    .btn-blue { background: #1e88e5; } .btn-blue:hover { background: #1565c0; }
+    .btn-red { background: #e53935; } .btn-red:hover { background: #c62828; }
+    .ack-btn { border: 0; border-radius: 4px; padding: 3px 8px; background: #1e88e5; color: #fff; cursor: pointer; font-size: 12px; }
+    .ack-btn:hover { background: #1565c0; }
+    .conn { font-size: 12px; color: var(--muted); }
+    .conn.error { color: var(--crit); }
+
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+      .full { grid-column: 1 / -1; }
+    }
+    @media (max-width: 620px) {
       .grid { grid-template-columns: 1fr; }
-      .panel { min-height: 0; }
-      .big-num { font-size: 34px; }
-      .panel[style] { grid-column: auto !important; overflow-x: auto; }
+      header { flex-direction: column; align-items: flex-start; }
+      .risk-value { font-size: 32px; }
+      .panel { overflow-x: auto; }
     }
   </style>
 </head>
 <body>
 
 <header>
-  <h1>🌉 桥梁结构健康监测系统</h1>
-  <div>欢迎, {{ user }}
-    | <a href="/history">📜 历史记录</a>
-    | <a href="/settings">⚙ 设置</a>
-    | <a class="danger" href="/logout">退出</a >
+  <h1>🌉 桥体卫士 · 桥梁结构健康监测</h1>
+  <div class="nav">
+    <span class="source-badge" id="sourceBadge">数据源：--</span>
+    <a href="/history">📜 历史记录</a>
+    <a href="/settings">⚙ 设置</a>
+    <a class="danger" href="/logout">退出</a>
   </div>
 </header>
 
 <div class="grid">
 
+  <!-- 风险状态 -->
   <div class="panel">
-    <h3>当前应变值</h3>
-    <div id="strainNum" class="big-num normal">--</div>
-    <div id="statusBar" class="status ok">● 状态正常</div>
-    <p class="meta">采集周期：<span id="intervalShow">--</span> 秒/次 ｜ 报警阈值：<span id="thresholdShow">{{ threshold }}</span> με</p>
-    <p class="meta">最后采样：<span id="lastSampleTime">--</span> ｜ 累计采样：<span id="sampleCount">0</span> 次</p>
-    <p id="connectionStatus" class="connection-status">● 数据连接正常</p>
-    <p class="meta">数据源状态：<span id="sensorStatus">--</span></p>
-    <button class="mini-btn" onclick="clearData()">🧹 一键清除数据</button>
+    <h3><span class="dot"></span>当前风险状态</h3>
+    <div class="risk-card">
+      <div class="risk-label" id="riskLabel">--</div>
+      <div class="risk-value risk-normal" id="strainNum">--</div>
+      <div class="risk-unit">当前应变值 · 阈值 <span id="thresholdShow">{{ threshold }}</span> με</div>
+    </div>
   </div>
 
+  <!-- 设备健康度 -->
   <div class="panel">
-    <h3>阈值仪表（<span id="gaugeThreshold">{{ threshold }}</span> με）</h3>
-    <div id="gauge"></div>
+    <h3><span class="dot"></span>设备健康度</h3>
+    <div class="health-row"><span class="k">设备标识</span><span class="v" id="healthDevice">--</span></div>
+    <div class="health-row"><span class="k">数据来源</span><span class="v" id="healthSource">--</span></div>
+    <div class="health-row"><span class="k">连接状态</span><span class="v" id="healthState">--</span></div>
+    <div class="health-row"><span class="k">最近心跳</span><span class="v" id="healthHeartbeat">--</span></div>
+    <div class="health-row"><span class="k">最近异常</span><span class="v" id="healthError">无</span></div>
   </div>
 
+  <!-- 报警统计 -->
   <div class="panel">
-    <h3>报警统计</h3>
-    <div class="big-num" id="alarmCount" style="color:#ffb74d">0</div>
-    <p class="status ok">累计报警次数</p >
-    <p class="meta">历史明细见右上角「📜 历史记录」</p >
+    <h3><span class="dot"></span>报警统计</h3>
+    <div class="stat-big" id="alarmTotal">0</div>
+    <div class="risk-unit" style="text-align:center">累计报警（内存队列）</div>
+    <div class="stat-grid">
+      <div class="stat-item"><div class="n c-warn" id="cntWarn">0</div><div class="t">预警</div></div>
+      <div class="stat-item"><div class="n c-alarm" id="cntAlarm">0</div><div class="t">报警</div></div>
+      <div class="stat-item"><div class="n c-crit" id="cntCrit">0</div><div class="t">严重报警</div></div>
+    </div>
+    <p class="conn" style="margin-top:8px;text-align:center">历史明细见「📜 历史记录」</p>
   </div>
 
-  <div class="panel">
-    <h3>实时应变曲线</h3>
+  <!-- 实时曲线 -->
+  <div class="panel" style="grid-column: span 2;">
+    <h3><span class="dot"></span>实时应变曲线</h3>
     <div id="chart"></div>
   </div>
 
-  <div class="panel" style="grid-column: 1 / -1;">
-    <h3>报警记录
-      <button class="clear-btn" onclick="clearAlarms()">🗑 清除报警</button>
+  <!-- 阈值仪表 -->
+  <div class="panel">
+    <h3><span class="dot"></span>阈值仪表</h3>
+    <div id="gauge"></div>
+  </div>
+
+  <!-- 报警队列 -->
+  <div class="panel full">
+    <h3><span class="dot"></span>报警队列
+      <span style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-blue" onclick="clearData()">🧹 清除数据</button>
+        <button class="btn btn-red" onclick="clearAlarms()">🗑 清除报警</button>
+      </span>
     </h3>
     <table>
-      <thead><tr><th>时间</th><th>应变值 (με)</th><th>等级</th><th>处理状态</th><th>操作</th></tr></thead>
+      <thead><tr>
+        <th>时间</th><th>应变值(με)</th><th>等级</th><th>规则</th><th>原因</th><th>状态</th><th>操作</th>
+      </tr></thead>
       <tbody id="alarmTable"></tbody>
     </table>
+    <p class="conn" id="connMeta">采集周期 <span id="intervalShow">--</span> 秒 ｜ 最后采样 <span id="lastSampleTime">--</span> ｜ 累计采样 <span id="sampleCount">0</span> 次</p>
+    <p class="conn" id="connectionStatus">● 数据连接正常</p>
   </div>
 
 </div>
 
 <script>
-  const gaugeChart = echarts.init(document.getElementById('gauge')); // 应变仪表盘实例
-  const lineChart = echarts.init(document.getElementById('chart')); // 实时曲线实例
+  const gaugeChart = echarts.init(document.getElementById('gauge'));
+  const lineChart = echarts.init(document.getElementById('chart'));
 
   gaugeChart.setOption({
     series: [{
       type: 'gauge', min: 0, max: 200,
-      axisLine: { lineStyle: { width: 12, color: [[0.6, '#4ade80'], [1, '#ff4444']] } },
+      axisLine: { lineStyle: { width: 12, color: [[0.6, '#4ade80'], [0.75, '#fbbf24'], [0.9, '#fb923c'], [1, '#ef4444']] } },
       pointer: { itemStyle: { color: '#ffb74d' } },
       detail: { formatter: '{value} με', color: '#cfe8ff', fontSize: 16 },
       data: [{ value: 0 }]
@@ -112,15 +183,16 @@
   });
 
   lineChart.setOption({
-    xAxis: { type: 'category', data: [], axisLabel: { color: '#7fd4ff' } },
-    yAxis: { type: 'value', axisLabel: { color: '#7fd4ff' } },
+    xAxis: { type: 'category', data: [], axisLabel: { color: '#7a9cc0' } },
+    yAxis: { type: 'value', axisLabel: { color: '#7a9cc0' } },
     tooltip: { trigger: 'axis' },
     series: [{
       name: '应变值', type: 'line', data: [], smooth: true, showSymbol: false,
       lineStyle: { color: '#4fc3f7', width: 2 },
+      areaStyle: { color: 'rgba(79,195,247,0.12)' },
       markLine: {
         data: [{ yAxis: {{ threshold }}, name: '阈值' }],
-        lineStyle: { color: '#ff4444', type: 'dashed' },
+        lineStyle: { color: '#ef4444', type: 'dashed' },
         label: { color: '#ff6b6b', formatter: '阈值 {{ threshold }}μ' }
       }
     }]
@@ -132,55 +204,84 @@
     });
   }
 
+  function riskOf(strain, threshold) {
+    if (strain <= threshold) return { label: '● 正常', cls: 'risk-normal' };
+    if (strain <= threshold * 1.1) return { label: '▲ 预警', cls: 'risk-warn' };
+    if (strain <= threshold * 1.2) return { label: '■ 报警', cls: 'risk-alarm' };
+    return { label: '⛔ 严重报警', cls: 'risk-crit' };
+  }
+
+  function levelClass(level) {
+    if (level === '严重报警') return 'lv-crit';
+    if (level === '报警') return 'lv-alarm';
+    return 'lv-warn';
+  }
+
   function setConnectionStatus(isConnected, message) {
-    const statusElement = document.getElementById('connectionStatus'); // 数据连接状态显示元素
-    statusElement.className = isConnected ? 'connection-status' : 'connection-status error';
-    statusElement.textContent = message;
+    const el = document.getElementById('connectionStatus');
+    el.className = isConnected ? 'conn' : 'conn error';
+    el.textContent = message;
   }
 
   async function refresh() {
     try {
-      const response = await fetch('/api/data'); // 获取实时监测数据的响应
+      const response = await fetch('/api/data');
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
-      const dashboardData = await response.json(); // 后端返回的大屏数据
+      const d = await response.json();
 
-      const strainElement = document.getElementById('strainNum'); // 当前应变值显示元素
-      const alarmStatusElement = document.getElementById('statusBar'); // 报警状态显示元素
-      strainElement.textContent = dashboardData.strain.toFixed(2) + ' με';
-      if (dashboardData.strain > dashboardData.threshold) {
-        strainElement.className = 'big-num danger';
-        alarmStatusElement.className = 'status bad';
-        alarmStatusElement.textContent = '⚠ 超限报警';
-      } else {
-        strainElement.className = 'big-num normal';
-        alarmStatusElement.className = 'status ok';
-        alarmStatusElement.textContent = '● 状态正常';
-      }
+      // 风险状态
+      const risk = riskOf(d.strain, d.threshold);
+      document.getElementById('riskLabel').textContent = risk.label;
+      document.getElementById('riskLabel').className = 'risk-label ' + risk.cls;
+      const strainEl = document.getElementById('strainNum');
+      strainEl.textContent = d.strain.toFixed(2) + ' με';
+      strainEl.className = 'risk-value ' + risk.cls;
+      document.getElementById('thresholdShow').textContent = d.threshold;
 
-      document.getElementById('intervalShow').textContent = dashboardData.interval;
-      document.getElementById('thresholdShow').textContent = dashboardData.threshold;
-      document.getElementById('gaugeThreshold').textContent = dashboardData.threshold;
-      document.getElementById('lastSampleTime').textContent = dashboardData.last_sample_time;
-      document.getElementById('sampleCount').textContent = dashboardData.sample_count;
-      document.getElementById('sensorStatus').textContent = dashboardData.sensor_status;
-      gaugeChart.setOption({ series: [{ data: [{ value: dashboardData.strain }] }] });
-      document.getElementById('alarmCount').textContent = dashboardData.alarms.length;
+      // 设备健康度
+      const h = d.device_health || {};
+      document.getElementById('healthDevice').textContent = d.device_id || '--';
+      document.getElementById('healthSource').textContent = d.source === 'serial' ? '串口(真实设备)' : '模拟器';
+      const stateEl = document.getElementById('healthState');
+      stateEl.textContent = h.text || d.sensor_status || '--';
+      stateEl.className = 'v ' + (h.state === 'online' ? 'state-online' : 'state-offline');
+      document.getElementById('healthHeartbeat').textContent = h.last_heartbeat || '--';
+      document.getElementById('healthError').textContent = h.last_error || '无';
+      document.getElementById('sourceBadge').textContent = '数据源：' + (d.source === 'serial' ? '串口(真实)' : '模拟');
 
+      // 报警统计（分级）
+      const alarms = d.alarms || [];
+      document.getElementById('alarmTotal').textContent = alarms.length;
+      document.getElementById('cntWarn').textContent = alarms.filter(a => a.type === '预警').length;
+      document.getElementById('cntAlarm').textContent = alarms.filter(a => a.type === '报警').length;
+      document.getElementById('cntCrit').textContent = alarms.filter(a => a.type === '严重报警').length;
+
+      // 实时曲线
+      gaugeChart.setOption({ series: [{ data: [{ value: d.strain }] }] });
       lineChart.setOption({
-        xAxis: { data: dashboardData.history.map(historyItem => historyItem.time) },
+        xAxis: { data: d.history.map(i => i.time) },
         series: [{
-          data: dashboardData.history.map(historyItem => historyItem.strain),
-          markLine: {
-            data: [{ yAxis: dashboardData.threshold, name: '阈值' }],
-            label: { formatter: `阈值 ${dashboardData.threshold}μ` }
-          }
+          data: d.history.map(i => i.strain),
+          markLine: { data: [{ yAxis: d.threshold, name: '阈值' }], label: { formatter: `阈值 ${d.threshold}μ` } }
         }]
       });
 
-      document.getElementById('alarmTable').innerHTML = dashboardData.alarms.map(alarmItem =>
-        `<tr><td>${escapeHtml(alarmItem.time)}</td><td class="alarm">${escapeHtml(alarmItem.strain)}</td><td class="alarm">${escapeHtml(alarmItem.type)}</td><td>${escapeHtml(alarmItem.status)}</td><td>${alarmItem.status === '未处理' ? `<button class="ack-btn" onclick="acknowledgeAlarm(${alarmItem.id})">确认处理</button>` : '已完成'}</td></tr>`
-      ).join('');
+      // 报警队列（含规则/原因，可解释）
+      document.getElementById('alarmTable').innerHTML = alarms.slice().reverse().map(a =>
+        `<tr>
+          <td>${escapeHtml(a.time)}</td>
+          <td class="${levelClass(a.type)}">${escapeHtml(a.strain)}</td>
+          <td class="${levelClass(a.type)}">${escapeHtml(a.type)}</td>
+          <td>${escapeHtml(a.rule)}</td>
+          <td class="reason-cell">${escapeHtml(a.reason)}</td>
+          <td>${escapeHtml(a.status)}</td>
+          <td>${a.status === '未处理' ? `<button class="ack-btn" onclick="acknowledgeAlarm(${a.id})">确认处理</button>` : '已完成'}</td>
+        </tr>`).join('') || '<tr><td colspan="7" style="color:#7a9cc0">暂无报警</td></tr>';
+
+      document.getElementById('intervalShow').textContent = d.interval;
+      document.getElementById('lastSampleTime').textContent = d.last_sample_time;
+      document.getElementById('sampleCount').textContent = d.sample_count;
       setConnectionStatus(true, '● 数据连接正常');
     } catch (error) {
       console.error('获取数据失败', error);
@@ -189,41 +290,32 @@
   }
 
   async function clearAlarms() {
-    if (!confirm('确定清除当前报警和 CSV 历史报警吗？')) return;
+    if (!confirm('确定清除当前报警和历史报警记录吗？')) return;
     try {
-      const response = await fetch('/api/clear_alarms', { method: 'POST' }); // 清除报警请求的响应
+      const response = await fetch('/api/clear_alarms', { method: 'POST' });
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
       refresh();
-    } catch (error) {
-      console.error('清除报警失败', error);
-      setConnectionStatus(false, '⚠ 清除报警失败');
-    }
+    } catch (e) { console.error(e); setConnectionStatus(false, '⚠ 清除报警失败'); }
   }
 
   async function acknowledgeAlarm(alarmId) {
     try {
-      const response = await fetch(`/api/acknowledge_alarm/${alarmId}`, { method: 'POST' }); // 确认处理报警的响应
+      const response = await fetch(`/api/acknowledge_alarm/${alarmId}`, { method: 'POST' });
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
       refresh();
-    } catch (error) {
-      console.error('确认报警失败', error);
-      setConnectionStatus(false, '⚠ 确认报警失败');
-    }
+    } catch (e) { console.error(e); setConnectionStatus(false, '⚠ 确认报警失败'); }
   }
 
   async function clearData() {
-    if (!confirm('确定清除当前数据和 CSV 历史数据吗？')) return;
+    if (!confirm('确定清除当前数据和历史数据记录吗？')) return;
     try {
-      const response = await fetch('/api/clear_data', { method: 'POST' }); // 清除数据请求的响应
+      const response = await fetch('/api/clear_data', { method: 'POST' });
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
       refresh();
-    } catch (error) {
-      console.error('清除数据失败', error);
-      setConnectionStatus(false, '⚠ 清除数据失败');
-    }
+    } catch (e) { console.error(e); setConnectionStatus(false, '⚠ 清除数据失败'); }
   }
 
   refresh();
