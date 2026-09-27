@@ -59,7 +59,7 @@
 
 <div id="alarmSection" class="panel">
   <table>
-    <thead><tr><th>时间</th><th>应变值 (με)</th><th>等级</th><th>处理状态</th></tr></thead>
+    <thead><tr><th>时间</th><th>应变值 (με)</th><th>等级</th><th>规则</th><th>原因</th><th>处理状态</th></tr></thead>
     <tbody id="histAlarmTable"></tbody>
   </table>
 </div>
@@ -120,15 +120,15 @@
       const response = await fetch(`/api/history_alarms?${getQueryString()}`); // 获取筛选后历史报警的响应
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
-      const alarmRows = await response.json(); // CSV 中的历史报警行
+      const alarmRows = await response.json(); // SQLite 中的历史报警记录
       const tableHtml = alarmRows.slice().reverse().map(alarmRow =>
-        `<tr><td>${escapeHtml(alarmRow[0])}</td><td class="alarm">${escapeHtml(alarmRow[1])}</td><td class="alarm">${escapeHtml(alarmRow[2])}</td><td>${escapeHtml(alarmRow[3] || '历史记录')}</td></tr>`
+        `<tr><td>${escapeHtml(alarmRow.ts)}</td><td class="alarm">${escapeHtml(alarmRow.value)}</td><td class="alarm">${escapeHtml(alarmRow.level)}</td><td>${escapeHtml(alarmRow.rule)}</td><td>${escapeHtml(alarmRow.reason)}</td><td>${escapeHtml(alarmRow.status)}</td></tr>`
       ).join('');
       document.getElementById('histAlarmTable').innerHTML =
-        tableHtml || '<tr><td colspan="3">暂无历史报警</td></tr>';
+        tableHtml || '<tr><td colspan="6">暂无历史报警</td></tr>';
     } catch (error) {
       console.error('读取历史报警失败', error);
-      showHistoryMessage('历史报警读取失败，请检查 CSV 文件和服务状态。');
+      showHistoryMessage('历史报警读取失败，请检查数据库和服务状态。');
     }
   }
 
@@ -138,14 +138,14 @@
       const response = await fetch(`/api/history_data?${getQueryString()}`); // 获取筛选后历史数据的响应
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
-      const dataRows = await response.json(); // CSV 中的历史数据行
+      const dataRows = await response.json(); // SQLite 中的历史数据行
       if (dataRows.length === 0) {
         showHistoryMessage('暂无历史数据。');
         return;
       }
 
-      const sampleTimes = dataRows.map(dataRow => dataRow[0]); // 历史采样时间列表
-      const strainValues = dataRows.map(dataRow => parseFloat(dataRow[1])); // 历史应变数值列表
+      const sampleTimes = dataRows.map(dataRow => dataRow.ts); // 历史采样时间列表
+      const strainValues = dataRows.map(dataRow => parseFloat(dataRow.value)); // 历史应变数值列表
       const averageValue = strainValues.reduce((total, value) => total + value, 0) / strainValues.length;
       const maximumValue = Math.max(...strainValues); // 历史最大应变值
       const minimumValue = Math.min(...strainValues); // 历史最小应变值
@@ -183,7 +183,7 @@
       });
     } catch (error) {
       console.error('读取历史数据失败', error);
-      showHistoryMessage('历史数据读取失败，请检查 CSV 文件和服务状态。');
+      showHistoryMessage('历史数据读取失败，请检查数据库和服务状态。');
     }
   }
 
