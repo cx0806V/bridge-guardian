@@ -188,3 +188,6 @@ bridge.db
 
 # WorkBuddy 工作目录（本地记忆/日志，不入库）
 .workbuddy/
+
+# slidep 工具内部缓存目录
+.slidep/
