@@ -14,13 +14,13 @@ from functools import wraps
 import io
 import threading
 import time
-import random
 import csv
 from datetime import datetime
 
 from config import Config
 from db import Database, now_str
 from rules import RuleEngine
+from datasource import SimulatedSource, SerialSource
 
 app = Flask(__name__)
 app.secret_key = Config.SECRET_KEY
@@ -32,10 +32,7 @@ PASSWORD = Config.PASSWORD        # 登录密码
 THRESHOLD = Config.THRESHOLD      # 报警阈值（单位 με）
 SAMPLE_INTERVAL = Config.SAMPLE_INTERVAL  # 数据采集周期（秒）
 
-# ---------- 设备与数据源标识（串口模式由固件上报，模拟模式用固定值） ----------
-DEVICE_ID = "SIM-01"              # 模拟设备标识
-SOURCE = "sim"                    # 数据来源
-
+# ---------- 采集参数 ----------
 HISTORY_LIMIT = 60                # 实时曲线保留点数
 ALARM_CACHE_LIMIT = 200           # 大屏报警缓存条数
 
@@ -70,8 +67,7 @@ class Simulator:
     def __init__(self):
         self.lock = threading.RLock()          # 保护内存状态与数据库并发访问
         self.db = Database(Config.DB_PATH)     # SQLite 数据层
-        self.device_id = DEVICE_ID
-        self.source = SOURCE
+        self.source = Config.DATA_SOURCE       # 数据来源 sim / serial
 
         # 启动时恢复最近一次有效设置
         setting = self.db.latest_setting()
@@ -79,6 +75,9 @@ class Simulator:
         interval = setting["interval"] if setting else SAMPLE_INTERVAL
 
         self.engine = RuleEngine(threshold=threshold)  # 规则引擎
+        self.data_source = self._build_source()        # 数据源（模拟/串口）
+        self.data_source.start()
+        self.device_id = self.data_source.device_id
         self.latest = {
             "strain": 0.0,                # 当前应变值
             "interval": interval,         # 采集周期（大屏显示用）
@@ -87,9 +86,15 @@ class Simulator:
             "alarms": [],                 # 报警缓存（含 rule/reason），最多200条
             "last_sample_time": "--",     # 最后一次采样时间
             "sample_count": self.db.count_samples(),  # 累计采样次数（含历史）
-            "sensor_status": "模拟运行中",  # 数据源运行状态
+            "sensor_status": self.data_source.status_text(),  # 数据源运行状态
+            "device_health": self.data_source.health(),        # 设备健康度
         }
-        self.value = 80.0                 # 模拟传感器当前读数
+
+    def _build_source(self):
+        """根据配置构建数据源（模拟 / 串口）。"""
+        if Config.DATA_SOURCE == "serial":
+            return SerialSource(Config.SERIAL_PORT, Config.SERIAL_BAUD)
+        return SimulatedSource()
 
     def start(self):
         threading.Thread(target=self._loop, daemon=True).start()
@@ -97,49 +102,52 @@ class Simulator:
     def _loop(self):
         while True:
             with self.lock:
-                # 模拟传感器：围绕80随机波动，2%概率冲高
-                self.value += random.uniform(-3, 3)
-                if random.random() < 0.02:
-                    self.value = random.uniform(125, 150)
-                self.value = round(max(50, min(180, self.value)), 2)
-
-                ts = now_str()
-                self.latest["strain"] = self.value
-                self.latest["last_sample_time"] = ts
-                self.latest["sample_count"] += 1
-                seq = self.latest["sample_count"]
-
-                # 实时曲线保留最近 N 个采样点
-                self.latest["history"].append({"time": ts, "strain": self.value})
-                if len(self.latest["history"]) > HISTORY_LIMIT:
-                    self.latest["history"].pop(0)
-
-                # 每个采样点落盘 SQLite，供历史数据比对使用
-                self.db.insert_sample(ts, self.device_id, self.source, self.value, seq)
-
-                # 规则引擎评估（可能产生多条报警，每条可解释）
-                triggered = self.engine.evaluate(ts, self.value)
-                for item in triggered:
-                    alarm_id = self.db.insert_alarm(
-                        ts, self.device_id, self.source, self.value,
-                        self.latest["threshold"], item["level"],
-                        item["rule"], item["reason"])
-                    alarm = {
-                        "id": alarm_id,
-                        "time": ts,
-                        "strain": self.value,
-                        "type": item["level"],
-                        "rule": item["rule"],
-                        "reason": item["reason"],
-                        "status": "未处理",
-                    }
-                    self.latest["alarms"].append(alarm)
-                    if len(self.latest["alarms"]) > ALARM_CACHE_LIMIT:
-                        self.latest["alarms"].pop(0)
-                    print(f"[报警] {ts} {item['rule']}: {item['reason']}")
-
+                sample = self.data_source.read_sample()
+                if sample is not None:
+                    self._process_sample(sample[0], sample[1])
+                # 每次循环刷新设备标识、状态与健康度
+                self.device_id = self.data_source.device_id
+                self.latest["sensor_status"] = self.data_source.status_text()
+                self.latest["device_health"] = self.data_source.health()
                 current_interval = self.latest["interval"]
             time.sleep(current_interval)
+
+    def _process_sample(self, value, device_id):
+        """处理一个采样点：更新状态、落盘 SQLite、规则评估。"""
+        ts = now_str()
+        self.latest["strain"] = value
+        self.latest["last_sample_time"] = ts
+        self.latest["sample_count"] += 1
+        seq = self.latest["sample_count"]
+
+        # 实时曲线保留最近 N 个采样点
+        self.latest["history"].append({"time": ts, "strain": value})
+        if len(self.latest["history"]) > HISTORY_LIMIT:
+            self.latest["history"].pop(0)
+
+        # 每个采样点落盘 SQLite，供历史数据比对使用
+        self.db.insert_sample(ts, device_id, self.source, value, seq)
+
+        # 规则引擎评估（可能产生多条报警，每条可解释）
+        triggered = self.engine.evaluate(ts, value)
+        for item in triggered:
+            alarm_id = self.db.insert_alarm(
+                ts, device_id, self.source, value,
+                self.latest["threshold"], item["level"],
+                item["rule"], item["reason"])
+            alarm = {
+                "id": alarm_id,
+                "time": ts,
+                "strain": value,
+                "type": item["level"],
+                "rule": item["rule"],
+                "reason": item["reason"],
+                "status": "未处理",
+            }
+            self.latest["alarms"].append(alarm)
+            if len(self.latest["alarms"]) > ALARM_CACHE_LIMIT:
+                self.latest["alarms"].pop(0)
+            print(f"[报警] {ts} {item['rule']}: {item['reason']}")
 
     # ---------- 数据/报警操作（含审计） ----------
     def clear_data(self, actor):
@@ -260,6 +268,7 @@ def api_data():
             "sensor_status": simulator.latest["sensor_status"],
             "device_id": simulator.device_id,
             "source": simulator.source,
+            "device_health": simulator.latest.get("device_health"),
         }
     return jsonify(data_snapshot)
 
