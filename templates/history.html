@@ -144,7 +144,7 @@
               <span class="tl-level ${lvCls(a.level)}">${escapeHtml(a.level)}</span>
               <span class="tl-rule">${escapeHtml(a.rule)}</span>
               <span class="tl-time">${escapeHtml(a.ts)}</span>
-              <span class="tl-src">${a.source === 'serial' ? '真实设备' : '模拟'}</span>
+              <span class="tl-src">${a.source === 'serial' ? '真实设备' : (a.source === 'sim' ? '模拟' : '历史导入')}</span>
             </div>
             <div class="tl-reason">${escapeHtml(a.reason)}</div>
             <div class="tl-status ${a.status === '已处理' ? 'done' : ''}">${a.status === '已处理' ? '✓ 已处理' : '● 未处理'}</div>

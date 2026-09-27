@@ -48,10 +48,12 @@ except Exception:
 
 
 # ================= HX711 读取（24 位，增益 128） =================
-def hx711_read():
-    """读取一次 HX711 原始读数（带符号 24 位）。"""
+def hx711_read(timeout_ms=100):
+    """读取一次 HX711 原始读数（带符号 24 位），超时返回 None。"""
+    start = time.ticks_ms()
     while dt.value() == 1:   # 等待数据就绪（DT 拉低）
-        pass
+        if time.ticks_diff(time.ticks_ms(), start) > timeout_ms:
+            return None      # 超时：传感器未接 / 接线异常，避免死循环卡死
     value = 0
     for _ in range(24):
         sck.value(1)
@@ -65,21 +67,30 @@ def hx711_read():
 
 
 def read_strain():
-    """多次采样去极值平均，转为相对应变值（με）。"""
-    samples = [hx711_read() for _ in range(8)]
+    """多次采样去极值平均，转为相对应变值（με）；读取异常返回 None。"""
+    samples = []
+    for _ in range(8):
+        raw = hx711_read()
+        if raw is None:
+            return None      # 传感器读取异常
+        samples.append(raw)
     samples.sort()
     avg = sum(samples[2:-2]) / 4
     return round((avg - OFFSET) / SCALE, 2)
 
 
 def display(value, alarming):
-    """OLED 显示当前值、状态与设备标识。"""
+    """OLED 显示当前值、状态与设备标识（value 为 None 表示传感器异常）。"""
     if oled is None:
         return
     oled.fill(0)
     oled.text("Bridge Guardian", 0, 0)
-    oled.text("Strain: %.1f ue" % value, 0, 20)
-    oled.text("State: %s" % ("ALARM" if alarming else "OK"), 0, 38)
+    if value is None:
+        oled.text("Strain: SENSOR ERR", 0, 20)
+        oled.text("State: FAULT", 0, 38)
+    else:
+        oled.text("Strain: %.1f ue" % value, 0, 20)
+        oled.text("State: %s" % ("ALARM" if alarming else "OK"), 0, 38)
     oled.text("ID: %s" % DEVICE_ID, 0, 54)
     oled.show()
 
@@ -94,7 +105,12 @@ def main():
         except Exception:
             strain = None
 
-        if strain is not None:
+        if strain is None:
+            # 传感器读取异常：红灯提示 + OLED 显示故障，不卡死、不输出伪造数据
+            led_red.value(1)
+            led_green.value(0)
+            display(None, False)
+        else:
             alarming = strain > THRESHOLD
             led_red.value(1 if alarming else 0)
             led_green.value(0 if alarming else 1)
