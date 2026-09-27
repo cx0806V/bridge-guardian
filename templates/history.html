@@ -69,14 +69,14 @@
     <div class="stat"><span id="avgAll">--</span><label>平均应变 (με)</label></div>
     <div class="stat"><span id="maxAll">--</span><label>最大值 (με)</label></div>
     <div class="stat"><span id="minAll">--</span><label>最小值 (με)</label></div>
-    <div class="stat"><span id="overCount">--</span><label>超限次数 (>{{ threshold }})</label></div>
+    <div class="stat"><span id="overCount">--</span><label>超限次数 (<span id="overCountLabel">>{{ threshold }}</span>)</label></div>
     <div class="stat"><span id="compare">--</span><label>后半段 vs 前半段均值</label></div>
   </div>
   <div class="panel"><div id="histChart" style="width:100%;height:320px"></div></div>
 </div>
 
 <script>
-  const threshold = {{ threshold }}; // 后端设定的报警阈值
+  let currentThreshold = {{ threshold }}; // 当前生效报警阈值（动态同步，与设置页/大屏一致）
   let currentTab = 'alarm'; // 当前打开的历史记录标签页
 
   function escapeHtml(value) {
@@ -149,7 +149,7 @@
       const averageValue = strainValues.reduce((total, value) => total + value, 0) / strainValues.length;
       const maximumValue = Math.max(...strainValues); // 历史最大应变值
       const minimumValue = Math.min(...strainValues); // 历史最小应变值
-      const overThresholdCount = strainValues.filter(value => value > threshold).length;
+      const overThresholdCount = strainValues.filter(value => value > currentThreshold).length;
 
       document.getElementById('avgAll').textContent = averageValue.toFixed(2);
       document.getElementById('maxAll').textContent = maximumValue.toFixed(2);
@@ -175,9 +175,9 @@
           name: '应变值', type: 'line', data: strainValues, smooth: true, showSymbol: false,
           lineStyle: { color: '#4fc3f7', width: 2 },
           markLine: {
-            data: [{ yAxis: threshold, name: '阈值' }],
+            data: [{ yAxis: currentThreshold, name: '阈值' }],
             lineStyle: { color: '#ff4444', type: 'dashed' },
-            label: { color: '#ff6b6b', formatter: `阈值 ${threshold}μ` }
+            label: { color: '#ff6b6b', formatter: `阈值 ${currentThreshold}μ` }
           }
         }]
       });
@@ -187,7 +187,21 @@
     }
   }
 
+  async function loadThreshold() {
+    try {
+      const response = await fetch('/api/settings'); // 获取当前生效设置
+      if (response.status === 401) { window.location.href = '/login'; return; }
+      if (!response.ok) return;
+      const s = await response.json();
+      currentThreshold = s.threshold;
+      const label = document.getElementById('overCountLabel');
+      if (label) label.textContent = `>${currentThreshold}`;
+      if (currentTab === 'data') loadData();
+    } catch (e) { console.error('读取阈值失败', e); }
+  }
+
   switchTab('alarm');
+  loadThreshold();
   window.addEventListener('resize', () => { if (historyChart) historyChart.resize(); });
 </script>
 

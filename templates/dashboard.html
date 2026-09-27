@@ -271,7 +271,7 @@
       document.getElementById('alarmTable').innerHTML = alarms.slice().reverse().map(a =>
         `<tr>
           <td>${escapeHtml(a.time)}</td>
-          <td class="${levelClass(a.type)}">${escapeHtml(a.strain)}</td>
+          <td class="${levelClass(a.type)}">${(a.rule === '设备离线' || a.rule === '设备恢复') ? '--' : escapeHtml(a.strain)}</td>
           <td class="${levelClass(a.type)}">${escapeHtml(a.type)}</td>
           <td>${escapeHtml(a.rule)}</td>
           <td class="reason-cell">${escapeHtml(a.reason)}</td>

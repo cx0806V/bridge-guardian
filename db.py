@@ -5,6 +5,7 @@
 - alarms   报警记录（含触发规则 rule 与可解释原因 reason、处理状态）
 - settings 参数设置历史（阈值、采集周期）
 - audit    审计记录（操作者、动作、详情）
+- device_heartbeat 设备心跳/事件（beat 心跳 / offline 离线 / online 恢复）
 
 时间格式统一为 YYYY-MM-DD HH:MM:SS；每次操作使用短连接 + 锁，保证与采样线程并发安全。
 """
@@ -53,6 +54,15 @@ CREATE TABLE IF NOT EXISTS audit (
     action TEXT NOT NULL,
     detail TEXT
 );
+
+CREATE TABLE IF NOT EXISTS device_heartbeat (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    device_id TEXT NOT NULL,
+    source TEXT NOT NULL,
+    event TEXT NOT NULL        -- beat(心跳) / offline(离线) / online(恢复)
+);
+CREATE INDEX IF NOT EXISTS idx_heartbeat_ts ON device_heartbeat(ts);
 """
 
 
@@ -197,3 +207,16 @@ class Database:
     def recent_audit(self, limit=100):
         return self._query(
             "SELECT * FROM audit ORDER BY id DESC LIMIT ?", (limit,))[::-1]
+
+    # ---------- device_heartbeat ----------
+    def insert_heartbeat(self, ts, device_id, source, event):
+        return self._execute(
+            "INSERT INTO device_heartbeat(ts, device_id, source, event) VALUES(?,?,?,?)",
+            (ts, device_id, source, event))
+
+    def recent_heartbeats(self, limit=100):
+        return self._query(
+            "SELECT * FROM device_heartbeat ORDER BY id DESC LIMIT ?", (limit,))[::-1]
+
+    def clear_heartbeats(self):
+        return self._execute("DELETE FROM device_heartbeat")

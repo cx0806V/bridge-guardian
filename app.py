@@ -78,6 +78,7 @@ class Simulator:
         self.data_source = self._build_source()        # 数据源（模拟/串口）
         self.data_source.start()
         self.device_id = self.data_source.device_id
+        self._was_online = None   # 设备在线状态边沿检测基准（None 表示尚未确定）
         self.latest = {
             "strain": 0.0,                # 当前应变值
             "interval": interval,         # 采集周期（大屏显示用）
@@ -103,14 +104,58 @@ class Simulator:
         while True:
             with self.lock:
                 sample = self.data_source.read_sample()
+                # 刷新设备状态、记录心跳、检测离线/恢复边沿
+                self._update_device_state(sample)
                 if sample is not None:
                     self._process_sample(sample[0], sample[1])
-                # 每次循环刷新设备标识、状态与健康度
-                self.device_id = self.data_source.device_id
-                self.latest["sensor_status"] = self.data_source.status_text()
-                self.latest["device_health"] = self.data_source.health()
                 current_interval = self.latest["interval"]
             time.sleep(current_interval)
+
+    def _update_device_state(self, sample):
+        """刷新设备状态，记录心跳，检测离线/恢复边沿并生成可解释报警。"""
+        self.device_id = self.data_source.device_id
+        self.latest["sensor_status"] = self.data_source.status_text()
+        health = self.data_source.health()
+        self.latest["device_health"] = health
+        if self.source != "serial":
+            return  # 模拟模式始终在线，无心跳/离线概念
+
+        is_online = health.get("state") == "online"
+        # 收到数据即记录一次心跳
+        if sample is not None:
+            self.db.insert_heartbeat(now_str(), self.device_id, self.source, "beat")
+        # 离线/恢复边沿检测
+        if self._was_online is None:
+            self._was_online = is_online  # 首次确定基准，不触发报警
+        elif is_online and not self._was_online:
+            self._record_device_event("设备恢复", "预警", "设备已恢复在线", "已恢复")
+            self._was_online = True
+        elif not is_online and self._was_online:
+            reason = health.get("last_error") or "心跳超时"
+            self._record_device_event("设备离线", "严重报警", f"设备失去连接：{reason}", "未处理")
+            self._was_online = False
+
+    def _record_device_event(self, rule, level, reason, status):
+        """记录设备事件（离线/恢复）为可解释报警，并写入心跳事件表。"""
+        ts = now_str()
+        event = "offline" if rule == "设备离线" else "online"
+        self.db.insert_heartbeat(ts, self.device_id, self.source, event)
+        alarm_id = self.db.insert_alarm(
+            ts, self.device_id, self.source, 0.0,
+            self.latest["threshold"], level, rule, reason, status)
+        alarm = {
+            "id": alarm_id,
+            "time": ts,
+            "strain": 0.0,
+            "type": level,
+            "rule": rule,
+            "reason": reason,
+            "status": status,
+        }
+        self.latest["alarms"].append(alarm)
+        if len(self.latest["alarms"]) > ALARM_CACHE_LIMIT:
+            self.latest["alarms"].pop(0)
+        print(f"[设备事件] {ts} {rule}: {reason}")
 
     def _process_sample(self, value, device_id):
         """处理一个采样点：更新状态、落盘 SQLite、规则评估。"""
@@ -158,6 +203,7 @@ class Simulator:
             self.latest["last_sample_time"] = "--"
             self.latest["sample_count"] = 0
             self.db.clear_samples()
+            self.db.clear_heartbeats()
             self.db.add_audit(actor, "clear_data", "清除全部采样数据")
             self.engine.reset()
 
