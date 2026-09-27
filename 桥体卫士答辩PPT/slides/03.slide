@@ -1,0 +1,34 @@
+<Slide style={{ background: '#FFFFFF', width: '1280px', height: '720px', padding: '0 40px' }}>
+  <Box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <Box style={{ height: 88, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #1E4FA8' }}>
+      <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#0E3F8C' }}>六层架构 —— 数据源可插拔</Text>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士</Text>
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'row', gap: 0, padding: '18px 0' }}>
+      <Box style={{ width: '28%', background: '#0E3F8C', borderRadius: 10, padding: 24, flexDirection: 'column', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 30, fontWeight: 'bold', color: '#FFFFFF' }}>六层解耦</Text>
+        <Text style={{ fontSize: 18, color: '#C9D9EF', marginTop: 14, lineHeight: 1.6 }}>核心是采集层 DataSource 抽象：换数据源，不改上层逻辑</Text>
+      </Box>
+      <Box style={{ flex: 1, flexDirection: 'column', justifyContent: 'space-between', marginLeft: 24 }}>
+        {[
+          { n: '01', t: '硬件层', d: 'ESP32 + HX711 + 传感器' },
+          { n: '02', t: '采集层', d: 'DataSource 抽象（模拟/串口）' },
+          { n: '03', t: '规则引擎', d: '6 类可解释规则' },
+          { n: '04', t: '数据层', d: 'SQLite 五表 + CSV 导出' },
+          { n: '05', t: '服务层', d: 'Flask + 统一鉴权' },
+          { n: '06', t: '展示层', d: '实时大屏 + 历史 + 设置' },
+        ].map((item, idx) => (
+          <Box key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 16, background: idx === 1 ? '#E8EFF8' : '#F7F9FC', borderRadius: 8, padding: '10px 16px' }}>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#1E4FA8', width: 40 }}>{item.n}</Text>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#0E3F8C', width: 90 }}>{item.t}</Text>
+            <Text style={{ fontSize: 17, color: '#4A5568', flex: 1 }}>{item.d}</Text>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+    <Box style={{ height: 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #E5E7EB' }}>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士 · 桥梁结构健康监测缩尺原型</Text>
+      <Text style={{ fontSize: 14, color: '#1E4FA8', fontWeight: 'bold' }}>03 / 10</Text>
+    </Box>
+  </Box>
+</Slide>

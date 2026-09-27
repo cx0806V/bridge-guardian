@@ -1,0 +1,36 @@
+<Slide style={{ background: '#FFFFFF', width: '1280px', height: '720px', padding: '0 40px' }}>
+  <Box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <Box style={{ height: 88, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #1E4FA8' }}>
+      <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#0E3F8C' }}>硬件本地双重预警</Text>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士</Text>
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'column', justifyContent: 'center', gap: 20, padding: '18px 0' }}>
+      <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+        {['HX711 采集', 'OLED 显示', 'LED / 蜂鸣器', '串口上行', 'Web 大屏'].map((item, idx) => (
+          <Box key={idx} style={{ flex: 1, flexDirection: 'column', alignItems: 'center', gap: 8, background: idx === 4 ? '#0E3F8C' : '#E8EFF8', borderRadius: 10, padding: '22px 10px' }}>
+            <Text style={{ fontSize: 20, fontWeight: 'bold', color: idx === 4 ? '#FFFFFF' : '#0E3F8C' }}>{item}</Text>
+            <Text style={{ fontSize: 14, color: idx === 4 ? '#C9D9EF' : '#4A5568' }}>{idx === 0 ? '压力传感器' : idx === 1 ? '实时数值/状态' : idx === 2 ? '本地声光预警' : idx === 3 ? 'JSON 数据' : '实时监测'}</Text>
+          </Box>
+        ))}
+      </Box>
+      <Box style={{ flexDirection: 'row', gap: 16 }}>
+        <Box style={{ flex: 1, background: '#F7F9FC', border: '1px solid #D6DCE5', borderRadius: 10, padding: 18 }}>
+          <Text style={{ fontSize: 19, fontWeight: 'bold', color: '#0E3F8C' }}>不依赖上位机</Text>
+          <Text style={{ fontSize: 17, color: '#4A5568', marginTop: 8, lineHeight: 1.6 }}>即使电脑没启动，硬件也能本地声光报警，双重保障。</Text>
+        </Box>
+        <Box style={{ flex: 1, background: '#F7F9FC', border: '1px solid #D6DCE5', borderRadius: 10, padding: 18 }}>
+          <Text style={{ fontSize: 19, fontWeight: 'bold', color: '#0E3F8C' }}>MicroPython 固件</Text>
+          <Text style={{ fontSize: 17, color: '#4A5568', marginTop: 8, lineHeight: 1.6 }}>HX711 读取直接实现，不依赖第三方库，代码可控、可答辩。</Text>
+        </Box>
+        <Box style={{ flex: 1, background: '#F7F9FC', border: '1px solid #D6DCE5', borderRadius: 10, padding: 18 }}>
+          <Text style={{ fontSize: 19, fontWeight: 'bold', color: '#0E3F8C' }}>诚实标定</Text>
+          <Text style={{ fontSize: 17, color: '#4A5568', marginTop: 8, lineHeight: 1.6 }}>零点 + 比例系数标定，读数随载荷单调稳定，不声称工程精度。</Text>
+        </Box>
+      </Box>
+    </Box>
+    <Box style={{ height: 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #E5E7EB' }}>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士 · 桥梁结构健康监测缩尺原型</Text>
+      <Text style={{ fontSize: 14, color: '#1E4FA8', fontWeight: 'bold' }}>08 / 10</Text>
+    </Box>
+  </Box>
+</Slide>

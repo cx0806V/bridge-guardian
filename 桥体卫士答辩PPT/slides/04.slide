@@ -1,0 +1,46 @@
+<Slide style={{ background: '#FFFFFF', width: '1280px', height: '720px', padding: '0 40px' }}>
+  <Box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <Box style={{ height: 88, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #1E4FA8' }}>
+      <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#0E3F8C' }}>双模式数据源 · 断线不造假</Text>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士</Text>
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'row', gap: 24, padding: '18px 0' }}>
+      <Box style={{ flex: 1.5, flexDirection: 'column', gap: 14 }}>
+        <Box style={{ flexDirection: 'row', alignItems: 'center', gap: 12, background: '#F0F5FC', borderRadius: 8, padding: '12px 16px' }}>
+          <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1E4FA8' }}>DATA_SOURCE</Text>
+          <Text style={{ fontSize: 18, color: '#4A5568' }}>环境变量一键切换，无需改代码</Text>
+        </Box>
+        <Box style={{ flex: 1, background: '#F7F9FC', border: '1px solid #D6DCE5', borderRadius: 10, padding: 18 }}>
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#0E3F8C' }}>模拟模式</Text>
+          <Text style={{ fontSize: 17, color: '#4A5568', marginTop: 10, lineHeight: 1.6 }}>内置模拟器生成数据，用于开发、测试与现场兜底，大屏明确标注「数据源：模拟」。</Text>
+        </Box>
+        <Box style={{ flex: 1, background: '#F7F9FC', border: '1px solid #3D7BD9', borderRadius: 10, padding: 18 }}>
+          <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#0E3F8C' }}>真实串口模式</Text>
+          <Text style={{ fontSize: 17, color: '#4A5568', marginTop: 10, lineHeight: 1.6 }}>USB 串口直连 ESP32，离线可用、可验证；大屏标注「数据源：串口(真实)」。</Text>
+        </Box>
+      </Box>
+      <Box style={{ flex: 1, flexDirection: 'column', gap: 12, background: '#E8EFF8', borderRadius: 10, padding: 20 }}>
+        <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#0E3F8C' }}>设备健康度三要素</Text>
+        <Box style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+          <Box style={{ width: 10, height: 10, borderRadius: 5, background: '#1E4FA8' }} />
+          <Text style={{ fontSize: 17, color: '#1A2230' }}>心跳时间戳</Text>
+        </Box>
+        <Box style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+          <Box style={{ width: 10, height: 10, borderRadius: 5, background: '#3D7BD9' }} />
+          <Text style={{ fontSize: 17, color: '#1A2230' }}>连续超时计数</Text>
+        </Box>
+        <Box style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+          <Box style={{ width: 10, height: 10, borderRadius: 5, background: '#D9534F' }} />
+          <Text style={{ fontSize: 17, color: '#1A2230' }}>最近错误原因</Text>
+        </Box>
+        <Box style={{ marginTop: 10, padding: '12px 14px', background: '#FFFFFF', borderRadius: 8, border: '1px solid #D9534F' }}>
+          <Text style={{ fontSize: 16, color: '#D9534F', fontWeight: 'bold', lineHeight: 1.5 }}>断线立即显示「设备离线」，绝不伪造在线或数据</Text>
+        </Box>
+      </Box>
+    </Box>
+    <Box style={{ height: 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #E5E7EB' }}>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士 · 桥梁结构健康监测缩尺原型</Text>
+      <Text style={{ fontSize: 14, color: '#1E4FA8', fontWeight: 'bold' }}>04 / 10</Text>
+    </Box>
+  </Box>
+</Slide>

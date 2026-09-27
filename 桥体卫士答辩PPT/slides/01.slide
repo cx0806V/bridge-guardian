@@ -1,0 +1,18 @@
+<Slide style={{ background: '#FFFFFF', width: '1280px', height: '720px', padding: '0 40px' }}>
+  <Box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <Box style={{ height: 180, background: '#0E3F8C', flexDirection: 'column', justifyContent: 'center', padding: '0 40px' }}>
+      <Text style={{ fontSize: 22, color: '#DCE7F5', letterSpacing: 3, fontWeight: 'bold' }}>桥梁结构健康监测 · 缩尺原型</Text>
+      <Text style={{ fontSize: 15, color: '#9DB8DC', marginTop: 10 }}>职业院校技能竞赛 · 软件技术专业 · 4 人团队</Text>
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+      <Text style={{ fontSize: 92, fontWeight: 'bold', color: '#0E3F8C', letterSpacing: 8 }}>桥体卫士</Text>
+      <Box style={{ width: 180, height: 4, background: '#1E4FA8', marginTop: 18, borderRadius: 2 }} />
+      <Text style={{ fontSize: 28, color: '#4A5568', marginTop: 22, letterSpacing: 2 }}>Bridge Guardian</Text>
+      <Text style={{ fontSize: 18, color: '#8B97A8', marginTop: 16 }}>采集 · 判断 · 存储 · 展示 · 处置 全闭环监测原型</Text>
+    </Box>
+    <Box style={{ height: 90, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #E5E7EB' }}>
+      <Text style={{ fontSize: 16, color: '#4A5568' }}>答辩时间：2026 年 11 月</Text>
+      <Text style={{ fontSize: 16, color: '#4A5568' }}>汇报人：团队组长</Text>
+    </Box>
+  </Box>
+</Slide>

@@ -1,0 +1,31 @@
+<Slide style={{ background: '#FFFFFF', width: '1280px', height: '720px', padding: '0 40px' }}>
+  <Box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <Box style={{ height: 88, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #1E4FA8' }}>
+      <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#0E3F8C' }}>为什么做 —— 桥梁受载监测的痛点</Text>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士</Text>
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'row', gap: 28, padding: '18px 0' }}>
+      <Box style={{ width: '52%', flexDirection: 'column', gap: 16 }}>
+        <Box style={{ flex: 1, background: '#F7F9FC', border: '1px solid #D6DCE5', borderRadius: 10, padding: 22, flexDirection: 'column', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#D9534F' }}>真实桥梁监测的难点</Text>
+          <Text style={{ fontSize: 20, color: '#4A5568', marginTop: 14, lineHeight: 1.6 }}>设备昂贵 · 部署困难 · 依赖工程级标定 · 难以在教学与演示中复现</Text>
+        </Box>
+        <Box style={{ flex: 1, background: '#E8EFF8', border: '1px solid #3D7BD9', borderRadius: 10, padding: 22, flexDirection: 'column', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0E3F8C' }}>我们的方案</Text>
+          <Text style={{ fontSize: 20, color: '#1A2230', marginTop: 14, lineHeight: 1.6 }}>低成本缩尺原型 · 完整演示「采集 → 判断 → 存储 → 展示 → 处置」全闭环</Text>
+        </Box>
+      </Box>
+      <Box style={{ flex: 1, flexDirection: 'column', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#0E3F8C', lineHeight: 1.5 }}>桥梁长期受载，结构健康关乎安全</Text>
+        <Text style={{ fontSize: 20, color: '#4A5568', marginTop: 16, lineHeight: 1.7 }}>我们用 ESP32 + 压力传感器 + Flask 平台，做一个可运行、可解释、可追溯的受载监测原型，把整条监测链路完整呈现出来。</Text>
+        <Box style={{ marginTop: 20, padding: '12px 16px', background: '#F0F5FC', borderRadius: 8 }}>
+          <Text style={{ fontSize: 18, color: '#1E4FA8', fontWeight: 'bold' }}>定位：缩尺模型受载变化模拟（诚实边界，不夸大精度）</Text>
+        </Box>
+      </Box>
+    </Box>
+    <Box style={{ height: 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #E5E7EB' }}>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士 · 桥梁结构健康监测缩尺原型</Text>
+      <Text style={{ fontSize: 14, color: '#1E4FA8', fontWeight: 'bold' }}>02 / 10</Text>
+    </Box>
+  </Box>
+</Slide>

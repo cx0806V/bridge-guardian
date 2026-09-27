@@ -1,0 +1,32 @@
+<Slide style={{ background: '#FFFFFF', width: '1280px', height: '720px', padding: '0 40px' }}>
+  <Box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <Box style={{ height: 88, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #1E4FA8' }}>
+      <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#0E3F8C' }}>演示闭环 + 测试证据</Text>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士</Text>
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'row', gap: 24, padding: '18px 0' }}>
+      <Box style={{ width: '56%', flexDirection: 'column', justifyContent: 'center', gap: 10 }}>
+        {['① 施加载荷，应变值上升', '② 超过阈值，风险等级变色', '③ 硬件蜂鸣器响、红灯亮', '④ Web 弹出可解释报警', '⑤ 点击「确认处理」闭环', '⑥ 历史时间线 + 统计 + 导出', '⑦ 拔线，如实显示「设备离线」'].map((item, idx) => (
+          <Box key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, background: idx === 3 ? '#E8EFF8' : '#F7F9FC', border: '1px solid #D6DCE5', borderRadius: 8, padding: '9px 14px' }}>
+            <Text style={{ fontSize: 18, color: '#1E4FA8', fontWeight: 'bold' }}>{item.split(' ')[0]}</Text>
+            <Text style={{ fontSize: 17, color: '#4A5568', flex: 1 }}>{item.slice(item.indexOf(' '))}</Text>
+          </Box>
+        ))}
+      </Box>
+      <Box style={{ flex: 1, flexDirection: 'column', justifyContent: 'center', gap: 14 }}>
+        <Box style={{ background: '#E8EFF8', borderRadius: 10, padding: 20 }}>
+          <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#0E3F8C' }}>自动化测试 28 项全绿</Text>
+          <Text style={{ fontSize: 17, color: '#4A5568', marginTop: 10, lineHeight: 1.6 }}>规则引擎（含防刷屏、等级分级）· 数据层 · 鉴权 · API 端到端 · 设备心跳 · 串口链路</Text>
+        </Box>
+        <Box style={{ background: '#F7F9FC', border: '1px solid #D6DCE5', borderRadius: 10, padding: 20 }}>
+          <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#0E3F8C' }}>冒烟测试</Text>
+          <Text style={{ fontSize: 17, color: '#4A5568', marginTop: 10, lineHeight: 1.6 }}>登录 302 · 大屏 200 · 未登录 API 401 · 数据快照含设备健康度</Text>
+        </Box>
+      </Box>
+    </Box>
+    <Box style={{ height: 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #E5E7EB' }}>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士 · 桥梁结构健康监测缩尺原型</Text>
+      <Text style={{ fontSize: 14, color: '#1E4FA8', fontWeight: 'bold' }}>09 / 10</Text>
+    </Box>
+  </Box>
+</Slide>

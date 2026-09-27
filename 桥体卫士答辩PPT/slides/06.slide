@@ -1,0 +1,37 @@
+<Slide style={{ background: '#FFFFFF', width: '1280px', height: '720px', padding: '0 40px' }}>
+  <Box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <Box style={{ height: 88, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #1E4FA8' }}>
+      <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#0E3F8C' }}>SQLite 五表 + 全程审计</Text>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士</Text>
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'row', gap: 24, padding: '18px 0' }}>
+      <Box style={{ width: '30%', background: '#0E3F8C', borderRadius: 10, padding: 24, flexDirection: 'column', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 28, fontWeight: 'bold', color: '#FFFFFF' }}>统一数据模型</Text>
+        <Text style={{ fontSize: 17, color: '#C9D9EF', marginTop: 14, lineHeight: 1.7 }}>统一时间/设备/状态字段，参数变更全程留痕，历史可筛选、可导出 CSV</Text>
+      </Box>
+      <Box style={{ flex: 1, flexDirection: 'column', justifyContent: 'center' }}>
+        <Table
+          style={{ width: '100%', height: 420 }}
+          defaultTextStyle={{ fontSize: 17, textAlign: 'center', color: '#1A2230' }}
+          defaultCellStyle={{ border: { left: { width: 1, color: '#D6DCE5' }, right: { width: 1, color: '#D6DCE5' }, top: { width: 1, color: '#D6DCE5' }, bottom: { width: 1, color: '#D6DCE5' } } }}
+          cells={[
+            [
+              { text: '表', textStyle: { bold: true, color: '#FFFFFF' }, cellStyle: { background: { color: '#0E3F8C' } } },
+              { text: '内容', textStyle: { bold: true, color: '#FFFFFF' }, cellStyle: { background: { color: '#0E3F8C' } } },
+              { text: '作用', textStyle: { bold: true, color: '#FFFFFF' }, cellStyle: { background: { color: '#0E3F8C' } } },
+            ],
+            [{ text: 'samples', textStyle: { bold: true } }, '采样数据', '实时曲线与历史比对'],
+            [{ text: 'device_heartbeat', textStyle: { bold: true } }, '心跳/离线/恢复事件', '设备健康度追溯'],
+            [{ text: 'alarms', textStyle: { bold: true } }, '报警（规则+原因+状态）', '可解释报警与处置'],
+            [{ text: 'settings', textStyle: { bold: true } }, '参数设置历史', '阈值/周期变更留痕'],
+            [{ text: 'audit', textStyle: { bold: true } }, '操作审计', '谁在何时做了什么'],
+          ]}
+        />
+      </Box>
+    </Box>
+    <Box style={{ height: 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #E5E7EB' }}>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士 · 桥梁结构健康监测缩尺原型</Text>
+      <Text style={{ fontSize: 14, color: '#1E4FA8', fontWeight: 'bold' }}>06 / 10</Text>
+    </Box>
+  </Box>
+</Slide>

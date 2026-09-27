@@ -1,0 +1,34 @@
+<Slide style={{ background: '#FFFFFF', width: '1280px', height: '720px', padding: '0 40px' }}>
+  <Box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <Box style={{ height: 88, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #1E4FA8' }}>
+      <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#0E3F8C' }}>6 类可解释规则 —— 每条报警说清「为什么」</Text>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士</Text>
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'row', gap: 28, padding: '18px 0' }}>
+      <Box style={{ width: '30%', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: '#E8EFF8', borderRadius: 12 }}>
+        <Text style={{ fontSize: 150, fontWeight: 'bold', color: '#0E3F8C', lineHeight: 1 }}>6</Text>
+        <Text style={{ fontSize: 24, fontWeight: 'bold', color: '#1E4FA8', marginTop: 8 }}>类可解释规则</Text>
+        <Text style={{ fontSize: 16, color: '#4A5568', marginTop: 10 }}>边沿触发 + 滞回 · 不刷屏</Text>
+      </Box>
+      <Box style={{ flex: 1, flexDirection: 'column', justifyContent: 'center', gap: 12 }}>
+        {[
+          { t: '阈值超限', d: '应变值超过阈值，分级：预警/报警/严重' },
+          { t: '变化率突变', d: '相邻采样周期变化量超限' },
+          { t: '持续超限', d: '连续 N 点超限（区别于单点毛刺）' },
+          { t: '短时波动', d: '短窗口内峰谷差超限' },
+          { t: '基线偏移', d: '近期均值相对历史基线漂移超限' },
+          { t: '设备离线', d: '心跳超时，触发离线/恢复事件' },
+        ].map((item, idx) => (
+          <Box key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 14, background: '#F7F9FC', border: '1px solid #D6DCE5', borderRadius: 8, padding: '10px 14px' }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#1E4FA8', width: 90 }}>{item.t}</Text>
+            <Text style={{ fontSize: 17, color: '#4A5568', flex: 1 }}>{item.d}</Text>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+    <Box style={{ height: 64, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #E5E7EB' }}>
+      <Text style={{ fontSize: 15, color: '#8B97A8' }}>桥体卫士 · 桥梁结构健康监测缩尺原型</Text>
+      <Text style={{ fontSize: 15, color: '#0E3F8C', fontWeight: 'bold' }}>示例：「应变值 135.00 με 超过阈值 120.00 με」</Text>
+    </Box>
+  </Box>
+</Slide>

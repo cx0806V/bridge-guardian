@@ -1,0 +1,33 @@
+<Slide style={{ background: '#0E3F8C', width: '1280px', height: '720px', padding: '0 40px' }}>
+  <Box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <Box style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 40 }}>
+      <Box style={{ width: '30%', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 180, fontWeight: 'bold', color: '#FFFFFF', lineHeight: 1 }}>10</Text>
+        <Text style={{ fontSize: 22, color: '#C9D9EF', marginTop: 10, fontWeight: 'bold' }}>个可证明的创新点</Text>
+      </Box>
+      <Box style={{ flex: 1, flexDirection: 'column', gap: 14 }}>
+        {[
+          '双模式数据源抽象，一键切换可兜底',
+          '6 类可解释规则，每条报警带原因',
+          '边沿触发 + 滞回，不刷屏',
+          '设备健康度模型，断线如实离线',
+          '设备离线/恢复事件，处置闭环',
+          'SQLite 五表 + 全程审计',
+          '历史动态阈值，三端一致',
+          '硬件本地双重预警',
+          '离线可用，不依赖网络',
+          '28 项测试的完整工程化',
+        ].map((item, idx) => (
+          <Box key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#FFC107', width: 30 }}>{idx + 1}</Text>
+            <Text style={{ fontSize: 19, color: '#FFFFFF' }}>{item}</Text>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+    <Box style={{ height: 100, flexDirection: 'column', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid #3D5B8C' }}>
+      <Text style={{ fontSize: 26, fontWeight: 'bold', color: '#FFFFFF', letterSpacing: 2 }}>说得出口，必拿得出证据</Text>
+      <Text style={{ fontSize: 16, color: '#C9D9EF', marginTop: 10 }}>感谢各位评委 · 展望：HTTP 备份通道 · 多测点扩展</Text>
+    </Box>
+  </Box>
+</Slide>
