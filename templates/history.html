@@ -27,6 +27,23 @@
     .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
     .filters input, .filters button { padding: 6px 10px; border: 1px solid #1e3a5f; border-radius: 6px; background: #10263f; color: #cfe8ff; }
     .filters button { cursor: pointer; background: #1e88e5; border: 0; }
+    .timeline { position: relative; padding: 4px 0; }
+    .tl-item { display: flex; gap: 12px; padding: 10px 0; position: relative; }
+    .tl-item::before { content: ''; position: absolute; left: 7px; top: 0; bottom: 0; width: 2px; background: #1e3a5f; }
+    .tl-dot { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto; margin-top: 2px; position: relative; z-index: 1; }
+    .tl-dot.lv-warn { background: #fbbf24; box-shadow: 0 0 8px #fbbf24; }
+    .tl-dot.lv-alarm { background: #fb923c; box-shadow: 0 0 8px #fb923c; }
+    .tl-dot.lv-crit { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+    .tl-body { flex: 1; background: rgba(10,25,48,.5); border: 1px solid #1e3a5f; border-radius: 8px; padding: 10px 12px; }
+    .tl-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .tl-level { font-weight: 700; font-size: 13px; }
+    .tl-rule { color: #4fc3f7; font-size: 12px; background: #123052; padding: 2px 8px; border-radius: 12px; }
+    .tl-time { color: #7a9cc0; font-size: 12px; margin-left: auto; }
+    .tl-src { color: #7a9cc0; font-size: 12px; }
+    .tl-reason { color: #cfe8ff; font-size: 13px; margin-top: 6px; }
+    .tl-status { color: #7a9cc0; font-size: 12px; margin-top: 6px; }
+    .tl-status.done { color: #4ade80; }
+    .tl-empty { text-align: center; color: #7a9cc0; padding: 24px 0; }
     @media (max-width: 760px) {
       body { padding: 8px; }
       header { align-items: flex-start; gap: 8px; flex-direction: column; }
@@ -58,10 +75,7 @@
 <p id="historyMessage" class="message"></p>
 
 <div id="alarmSection" class="panel">
-  <table>
-    <thead><tr><th>时间</th><th>应变值 (με)</th><th>等级</th><th>规则</th><th>原因</th><th>处理状态</th></tr></thead>
-    <tbody id="histAlarmTable"></tbody>
-  </table>
+  <div id="histAlarmTable" class="timeline"></div>
 </div>
 
 <div id="dataSection" style="display:none">
@@ -121,11 +135,23 @@
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
       const alarmRows = await response.json(); // SQLite 中的历史报警记录
-      const tableHtml = alarmRows.slice().reverse().map(alarmRow =>
-        `<tr><td>${escapeHtml(alarmRow.ts)}</td><td class="alarm">${escapeHtml(alarmRow.value)}</td><td class="alarm">${escapeHtml(alarmRow.level)}</td><td>${escapeHtml(alarmRow.rule)}</td><td>${escapeHtml(alarmRow.reason)}</td><td>${escapeHtml(alarmRow.status)}</td></tr>`
-      ).join('');
+      const lvCls = l => l === '严重报警' ? 'lv-crit' : (l === '报警' ? 'lv-alarm' : 'lv-warn');
+      const html = alarmRows.slice().reverse().map(a =>
+        `<div class="tl-item">
+          <div class="tl-dot ${lvCls(a.level)}"></div>
+          <div class="tl-body">
+            <div class="tl-top">
+              <span class="tl-level ${lvCls(a.level)}">${escapeHtml(a.level)}</span>
+              <span class="tl-rule">${escapeHtml(a.rule)}</span>
+              <span class="tl-time">${escapeHtml(a.ts)}</span>
+              <span class="tl-src">${a.source === 'serial' ? '真实设备' : '模拟'}</span>
+            </div>
+            <div class="tl-reason">${escapeHtml(a.reason)}</div>
+            <div class="tl-status ${a.status === '已处理' ? 'done' : ''}">${a.status === '已处理' ? '✓ 已处理' : '● 未处理'}</div>
+          </div>
+        </div>`).join('');
       document.getElementById('histAlarmTable').innerHTML =
-        tableHtml || '<tr><td colspan="6">暂无历史报警</td></tr>';
+        html || '<div class="tl-empty">暂无历史报警</div>';
     } catch (error) {
       console.error('读取历史报警失败', error);
       showHistoryMessage('历史报警读取失败，请检查数据库和服务状态。');

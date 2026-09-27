@@ -79,8 +79,11 @@ class Simulator:
         self.data_source.start()
         self.device_id = self.data_source.device_id
         self._was_online = None   # 设备在线状态边沿检测基准（None 表示尚未确定）
+        self._start_time = time.time()   # 系统启动时刻（计算运行时长）
+        self._prev_strain = None         # 上一次采样值（计算变化率）
         self.latest = {
             "strain": 0.0,                # 当前应变值
+            "rate": None,                 # 当前变化率（με/采样周期）
             "interval": interval,         # 采集周期（大屏显示用）
             "threshold": threshold,       # 报警阈值（大屏显示用）
             "history": [],                # 实时曲线 [{"time","strain"}]，最多60点
@@ -161,6 +164,9 @@ class Simulator:
         """处理一个采样点：更新状态、落盘 SQLite、规则评估。"""
         ts = now_str()
         self.latest["strain"] = value
+        # 变化率：相邻采样点差值（首次采样无前值记为 None）
+        self.latest["rate"] = round(value - self._prev_strain, 2) if self._prev_strain is not None else None
+        self._prev_strain = value
         self.latest["last_sample_time"] = ts
         self.latest["sample_count"] += 1
         seq = self.latest["sample_count"]
@@ -315,8 +321,17 @@ def api_data():
             "device_id": simulator.device_id,
             "source": simulator.source,
             "device_health": simulator.latest.get("device_health"),
+            "rate": simulator.latest.get("rate"),
+            "uptime": int(time.time() - simulator._start_time),
         }
     return jsonify(data_snapshot)
+
+
+@app.route("/api/audit")
+@login_required
+def api_audit():
+    """最近操作审计记录（供设置页展示变更追溯）。"""
+    return jsonify(simulator.db.recent_audit(50))
 
 
 @app.route("/api/clear_alarms", methods=["POST"])

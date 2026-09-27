@@ -2,28 +2,33 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <title>登录 - 桥梁结构健康监测系统</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>登录 - 桥体卫士</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #0a1930; font-family: "Microsoft YaHei", sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-    .card { background: #10263f; border: 1px solid #1e3a5f; border-radius: 10px; padding: 40px; width: 340px; }
-    h1 { color: #4fc3f7; font-size: 20px; text-align: center; margin-bottom: 24px; }
-    label { color: #7fd4ff; font-size: 14px; display: block; margin: 12px 0 4px; }
-    input { width: 100%; padding: 10px; border: 1px solid #1e3a5f; border-radius: 6px; background: #0a1930; color: #cfe8ff; font-size: 14px; }
-    button { width: 100%; margin-top: 20px; padding: 10px; background: #1e88e5; color: #fff; border: none; border-radius: 6px; font-size: 15px; cursor: pointer; }
-    button:hover { background: #1565c0; }
-    .error { color: #ff6b6b; font-size: 13px; text-align: center; margin-top: 12px; }
+    :root { --bg:#081120; --panel:#0f2038; --border:#1c3a5e; --text:#cfe8ff; --muted:#7a9cc0; --accent:#4fc3f7; --crit:#ef4444; }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background: radial-gradient(1000px 500px at 50% -10%, #0e2440 0%, var(--bg) 60%);
+      font-family:"Microsoft YaHei","PingFang SC",sans-serif; display:flex; justify-content:center; align-items:center; min-height:100vh; }
+    .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:40px; width:360px; }
+    h1 { color:var(--accent); font-size:22px; text-align:center; letter-spacing:1px; }
+    .sub { color:var(--muted); font-size:13px; text-align:center; margin:8px 0 24px; line-height:1.6; }
+    label { color:#8fd8ff; font-size:14px; display:block; margin:12px 0 4px; }
+    input { width:100%; padding:10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:14px; }
+    button { width:100%; margin-top:20px; padding:10px; background:#1e88e5; color:#fff; border:none; border-radius:6px; font-size:15px; cursor:pointer; }
+    button:hover { background:#1565c0; }
+    .error { color:var(--crit); font-size:13px; text-align:center; margin-top:12px; }
   </style>
 </head>
 <body>
 
 <div class="card">
-  <h1>🌉 桥梁结构健康监测系统</h1>
+  <h1>🌉 桥体卫士</h1>
+  <p class="sub">桥梁结构健康监测系统<br>缩尺模型受载变化模拟 · 应变实时监测与分级报警</p>
   <form method="POST">
     <label>用户名</label>
-    <input type="text" name="username" required>
+    <input type="text" name="username" required autocomplete="username">
     <label>密码</label>
-    <input type="password" name="password" required>
+    <input type="password" name="password" required autocomplete="current-password">
     <button type="submit">登 录</button>
     {% if error %}<div class="error">{{ error }}</div>{% endif %}
   </form>

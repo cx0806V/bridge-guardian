@@ -2,81 +2,148 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <title>系统设置 - 桥梁结构健康监测系统</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>系统设置 - 桥体卫士</title>
   <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; padding: 20px; background: #0a1930; color: #cfe8ff; font-family: "Microsoft YaHei", sans-serif; }
-    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e3a5f; padding-bottom: 12px; }
-    h1 { margin: 0; font-size: 22px; color: #4fc3f7; }
-    a { color: #4fc3f7; text-decoration: none; }
-    .card { max-width: 520px; margin: 30px auto; padding: 24px; border: 1px solid #1e3a5f; border-radius: 10px; background: #10263f; }
-    label { display: block; margin-top: 16px; color: #7fd4ff; }
-    input { width: 100%; margin-top: 6px; padding: 10px; border: 1px solid #1e3a5f; border-radius: 6px; background: #0a1930; color: #cfe8ff; font-size: 15px; }
-    button { margin-top: 22px; width: 100%; padding: 10px; border: 0; border-radius: 6px; background: #1e88e5; color: #fff; cursor: pointer; font-size: 15px; }
-    .tip { color: #7a9cc0; font-size: 13px; line-height: 1.7; }
-    #message { min-height: 20px; margin-top: 12px; text-align: center; color: #4ade80; }
-    #message.error { color: #ff6b6b; }
+    :root {
+      --bg:#081120; --panel:#0f2038; --border:#1c3a5e; --line:#21446b;
+      --text:#cfe8ff; --muted:#7a9cc0; --accent:#4fc3f7;
+      --ok:#4ade80; --warn:#fbbf24; --crit:#ef4444;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { background: radial-gradient(1200px 600px at 50% -10%, #0e2440 0%, var(--bg) 60%);
+      color:var(--text); font-family:"Microsoft YaHei","PingFang SC",sans-serif; padding:20px; min-height:100vh; }
+    header { display:flex; justify-content:space-between; align-items:center;
+      border-bottom:1px solid var(--border); padding-bottom:12px; max-width:960px; margin:0 auto; }
+    h1 { margin:0; font-size:22px; color:var(--accent); }
+    a { color:var(--accent); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .wrap { max-width:960px; margin:20px auto 0; display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    @media (max-width:820px) { .wrap { grid-template-columns:1fr; } }
+    .card { border:1px solid var(--border); border-radius:10px; background:var(--panel); padding:20px; }
+    .card h3 { font-size:14px; color:#8fd8ff; margin-bottom:12px; }
+    label { display:block; margin-top:14px; color:#8fd8ff; font-size:14px; }
+    .explain { color:var(--muted); font-size:12.5px; line-height:1.6; margin-top:4px; }
+    input { width:100%; margin-top:6px; padding:10px; border:1px solid var(--border);
+      border-radius:6px; background:var(--bg); color:var(--text); font-size:15px; }
+    button { margin-top:20px; width:100%; padding:10px; border:0; border-radius:6px;
+      background:#1e88e5; color:#fff; cursor:pointer; font-size:15px; }
+    button:hover { background:#1565c0; }
+    .risk-tip { margin-top:14px; padding:10px 12px; border-radius:8px; font-size:13px; line-height:1.6;
+      background:rgba(251,191,36,.08); border:1px solid rgba(251,191,36,.3); color:#fcd34d; }
+    #message { min-height:20px; margin-top:12px; text-align:center; color:var(--ok); }
+    #message.error { color:var(--crit); }
+    /* 审计列表 */
+    .audit-list { max-height:360px; overflow-y:auto; }
+    .audit-item { padding:9px 0; border-bottom:1px dashed var(--line); font-size:13px; }
+    .audit-item:last-child { border-bottom:none; }
+    .audit-item .t { color:var(--muted); font-size:12px; }
+    .audit-item .a { color:var(--accent); }
+    .audit-item .d { color:var(--text); }
+    .audit-empty { color:var(--muted); text-align:center; padding:20px 0; font-size:13px; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>⚙ 系统设置</h1>
-    <a href="/dashboard">← 返回主画面</a>
-  </header>
-  <main class="card">
-    <p class="tip">设置会立即生效，并记录到 <code>config_log.csv</code>，方便答辩时追溯参数变更。</p>
+
+<header>
+  <h1>⚙ 系统设置</h1>
+  <a href="/dashboard">← 返回主画面</a>
+</header>
+
+<div class="wrap">
+
+  <!-- 参数设置 -->
+  <div class="card">
+    <h3>监测参数</h3>
     <form id="settingsForm">
       <label for="threshold">报警阈值（με）</label>
+      <p class="explain">当等效应变值超过该阈值时触发分级报警（预警/报警/严重报警）。单位 με（微应变），范围 1–200。</p>
       <input id="threshold" type="number" min="1" max="200" step="0.1" required>
+
       <label for="interval">采集周期（秒）</label>
+      <p class="explain">两次采样的时间间隔，决定数据刷新频率与规则引擎的评估节奏。范围 0.1–60 秒。</p>
       <input id="interval" type="number" min="0.1" max="60" step="0.1" required>
+
+      <div class="risk-tip">⚠ 风险提示：阈值过低会导致频繁报警，过高则可能漏报；修改后<b>立即生效</b>并写入变更审计，供答辩追溯。</div>
       <button type="submit">保存设置</button>
     </form>
     <p id="message"></p>
-  </main>
-  <script>
-    const messageElement = document.getElementById('message'); // 设置结果提示元素
+  </div>
 
-    function showMessage(message, isError = false) {
-      messageElement.textContent = message;
-      messageElement.className = isError ? 'error' : '';
-    }
+  <!-- 变更审计 -->
+  <div class="card">
+    <h3>最近变更记录</h3>
+    <div class="audit-list" id="auditList">
+      <div class="audit-empty">加载中…</div>
+    </div>
+  </div>
 
-    async function loadSettings() {
-      try {
-        const response = await fetch('/api/settings'); // 获取当前设置的响应
-        if (response.status === 401) { window.location.href = '/login'; return; }
-        if (!response.ok) throw new Error(`请求失败：${response.status}`);
-        const settingsData = await response.json(); // 当前生效的设置数据
-        document.getElementById('threshold').value = settingsData.threshold;
-        document.getElementById('interval').value = settingsData.interval;
-      } catch (error) {
-        console.error('读取设置失败', error);
-        showMessage('读取设置失败，请检查服务状态。', true);
-      }
-    }
+</div>
 
-    document.getElementById('settingsForm').addEventListener('submit', async event => {
-      event.preventDefault();
-      const thresholdValue = Number(document.getElementById('threshold').value); // 用户输入的报警阈值
-      const intervalValue = Number(document.getElementById('interval').value); // 用户输入的采集周期
-      try {
-        const response = await fetch('/api/settings', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ threshold: thresholdValue, interval: intervalValue })
-        });
-        if (response.status === 401) { window.location.href = '/login'; return; }
-        const result = await response.json(); // 保存设置后的服务响应
-        if (!response.ok) throw new Error(result.error);
-        showMessage('设置已保存并立即生效。');
-      } catch (error) {
-        console.error('保存设置失败', error);
-        showMessage(error.message || '保存设置失败。', true);
-      }
-    });
+<script>
+  const messageElement = document.getElementById('message');
 
-    loadSettings();
-  </script>
+  function showMessage(message, isError = false) {
+    messageElement.textContent = message;
+    messageElement.className = isError ? 'error' : '';
+  }
+
+  const ACTION_MAP = {
+    update_settings: '参数修改',
+    clear_data: '清除数据',
+    clear_alarms: '清除报警',
+    acknowledge_alarm: '报警处置',
+  };
+
+  function escapeHtml(v){ return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  async function loadSettings() {
+    try {
+      const response = await fetch('/api/settings');
+      if (response.status === 401) { window.location.href = '/login'; return; }
+      if (!response.ok) throw new Error(`请求失败：${response.status}`);
+      const s = await response.json();
+      document.getElementById('threshold').value = s.threshold;
+      document.getElementById('interval').value = s.interval;
+    } catch (e) { console.error(e); showMessage('读取设置失败。', true); }
+  }
+
+  async function loadAudit() {
+    try {
+      const response = await fetch('/api/audit');
+      if (response.status === 401) { window.location.href = '/login'; return; }
+      if (!response.ok) throw new Error(`请求失败：${response.status}`);
+      const rows = await response.json();
+      const html = rows.map(r =>
+        `<div class="audit-item">
+          <div class="t">${escapeHtml(r.ts)} · ${escapeHtml(r.actor)}</div>
+          <div><span class="a">${ACTION_MAP[r.action] || escapeHtml(r.action)}</span> <span class="d">${escapeHtml(r.detail || '')}</span></div>
+        </div>`).join('');
+      document.getElementById('auditList').innerHTML = html || '<div class="audit-empty">暂无变更记录</div>';
+    } catch (e) { console.error(e); document.getElementById('auditList').innerHTML = '<div class="audit-empty">审计记录加载失败</div>'; }
+  }
+
+  document.getElementById('settingsForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    const thresholdValue = Number(document.getElementById('threshold').value);
+    const intervalValue = Number(document.getElementById('interval').value);
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ threshold: thresholdValue, interval: intervalValue })
+      });
+      if (response.status === 401) { window.location.href = '/login'; return; }
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error);
+      showMessage('设置已保存并立即生效。');
+      loadAudit(); // 刷新审计记录
+    } catch (e) { showMessage(e.message || '保存设置失败。', true); }
+  });
+
+  loadSettings();
+  loadAudit();
+</script>
+
 </body>
 </html>
