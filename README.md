@@ -11,7 +11,7 @@
 - **双模式数据源**：`DATA_SOURCE=sim|serial` 一键切换；串口模式下设备在线状态、最近心跳、异常原因如实显示，断线即「离线」，绝不伪造。
 - **实时大屏**：风险等级、当前应变值、阈值仪表、实时曲线、设备健康度、报警分级统计、报警队列与处置闭环。
 - **可解释报警**：6 类规则（阈值超限 / 变化率突变 / 持续超限 / 短时波动 / 基线偏移 / 设备离线），每条报警带「触发规则 + 触发值 + 原因」。
-- **数据可靠**：统一数据结构（时间/设备号/来源/状态/审计），SQLite 存储，保留 CSV 导出与旧 CSV 一键导入。
+- **数据可靠**：统一数据结构（时间/设备号/来源/状态/审计），SQLite 存储，保留 CSV 导出。
 - **安全与工程化**：密钥走环境变量、统一鉴权、写接口保护、依赖清单、测试与现场手册。
 
 ## 系统架构
@@ -29,7 +29,6 @@ config.py             集中配置（环境变量 / .env）
 db.py                 SQLite 数据层（samples/alarms/settings/audit）
 rules.py              报警规则引擎（可解释规则）
 datasource.py         数据源抽象（模拟 / 串口）
-migrate.py            旧 CSV 一键导入 SQLite
 firmware/main.py      ESP32 MicroPython 固件
 firmware/README.md    接线 / 烧录 / 标定文档
 templates/            前端页面（登录 / 大屏 / 设置 / 历史）
@@ -72,7 +71,6 @@ python app.py          # 默认 DATA_SOURCE=sim
 
 ## 数据管理
 
-- **旧数据迁移**：`python migrate.py`（先 `--dry-run` 预览；`--reset` 全新导入）。
 - **存储**：SQLite（`bridge.db`，默认，可经 `DB_PATH` 修改）。
 - **导出**：历史页/API 支持按时间筛选导出 CSV。
 

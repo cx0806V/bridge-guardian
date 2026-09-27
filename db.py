@@ -185,12 +185,6 @@ class Database:
             "INSERT INTO settings(ts, threshold, interval) VALUES(?,?,?)",
             (now_str(), threshold, interval))
 
-    def add_setting_at(self, ts, threshold, interval):
-        """按指定时间写入设置历史（用于数据迁移）。"""
-        return self._execute(
-            "INSERT INTO settings(ts, threshold, interval) VALUES(?,?,?)",
-            (ts, threshold, interval))
-
     def clear_settings(self):
         return self._execute("DELETE FROM settings")
 
