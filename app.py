@@ -1,17 +1,20 @@
-from flask import Flask, request, session, redirect, render_template, jsonify, Response
+from flask import Flask, request, session, redirect, render_template, jsonify, Response, url_for
+from functools import wraps
 import threading, time, random, csv, os
 from collections import deque
 from datetime import datetime
 
+from config import Config
+
 app = Flask(__name__)
-app.secret_key = "bridge-guardian-secret"
+app.secret_key = Config.SECRET_KEY
 app.config["TEMPLATES_AUTO_RELOAD"] = True   # 模板改动立即生效，不用重启
 
-# ---------- 全局配置（集中管理，方便后期调整） ----------
-USERNAME = "admin"            # 登录账号
-PASSWORD = "123456"           # 登录密码
-THRESHOLD = 120               # 报警阈值（单位 με）
-SAMPLE_INTERVAL = 1           # 数据采集周期（秒）
+# ---------- 全局配置（从环境变量 / .env 集中读取，不硬编码密钥） ----------
+USERNAME = Config.USERNAME        # 登录账号
+PASSWORD = Config.PASSWORD        # 登录密码
+THRESHOLD = Config.THRESHOLD      # 报警阈值（单位 με）
+SAMPLE_INTERVAL = Config.SAMPLE_INTERVAL  # 数据采集周期（秒）
 CSV_ALARM = "alarm_log.csv"   # 历史报警落盘文件（历史报警查看的数据源）
 CSV_DATA = "data_log.csv"     # 全部采样数据落盘文件（历史数据比对的数据源）
 CSV_CONFIG = "config_log.csv" # 参数设置变更记录文件
@@ -21,6 +24,18 @@ CSV_CONFIG = "config_log.csv" # 参数设置变更记录文件
 def no_cache(response):
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+def login_required(view):
+    """统一鉴权：未登录时 API 返回 401 JSON，页面重定向到登录页。"""
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if "user" not in session:
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "未登录或会话已过期"}), 401
+            return redirect(url_for("login"))
+        return view(*args, **kwargs)
+    return wrapped
 
 
 # ================= 采样模拟器（模拟传感器 + 数据落盘 + 报警判断） =================
@@ -264,27 +279,25 @@ def logout():
     return redirect("/login")
 
 @app.route("/dashboard")
+@login_required
 def dashboard():
-    if "user" not in session:
-        return redirect("/login")
     return render_template("dashboard.html", user=session["user"], threshold=simulator.latest["threshold"])
 
 @app.route("/settings")
+@login_required
 def settings_page():
     """系统设置页，用于调整报警阈值和采集周期。"""
-    if "user" not in session:
-        return redirect("/login")
     return render_template("settings.html")
 
 @app.route("/history")
+@login_required
 def history_page():
     """历史记录页：点击主画面入口进入，点返回回主画面"""
-    if "user" not in session:
-        return redirect("/login")
     return render_template("history.html", threshold=simulator.latest["threshold"])
 
 # ================= 数据接口 =================
 @app.route("/api/data")
+@login_required
 def api_data():
     """大屏每秒轮询：返回数据快照（拷贝一份，避免与采样线程冲突）"""
     with simulator.lock:
@@ -301,18 +314,21 @@ def api_data():
     return jsonify(data_snapshot)
 
 @app.route("/api/clear_alarms", methods=["POST"])
+@login_required
 def clear_alarms():
     """一键清除当前报警与 CSV 历史报警"""
     simulator.clear_alarms()
     return jsonify({"ok": True})
 
 @app.route("/api/clear_data", methods=["POST"])
+@login_required
 def clear_data():
     """一键清除当前数据与 CSV 历史数据"""
     simulator.clear_data()
     return jsonify({"ok": True})
 
 @app.route("/api/settings", methods=["GET", "POST"])
+@login_required
 def settings():
     """读取或保存监测参数。"""
     if request.method == "GET":
@@ -332,6 +348,7 @@ def settings():
     return jsonify({"ok": True})
 
 @app.route("/api/acknowledge_alarm/<int:alarm_id>", methods=["POST"])
+@login_required
 def acknowledge_alarm(alarm_id):
     """确认处理主画面中的单条报警。"""
     if simulator.acknowledge_alarm(alarm_id):
@@ -339,6 +356,7 @@ def acknowledge_alarm(alarm_id):
     return jsonify({"error": "报警不存在或已被清除。"}), 404
 
 @app.route("/api/history_alarms")
+@login_required
 def history_alarms():
     """历史报警信息查看（读 alarm_log.csv 最后500条）"""
     try:
@@ -349,6 +367,7 @@ def history_alarms():
         return jsonify({"error": f"读取历史报警失败：{error}"}), 500
 
 @app.route("/api/history_data")
+@login_required
 def history_data():
     """历史数据查看比对（读 data_log.csv 最后500条）"""
     try:
@@ -359,6 +378,7 @@ def history_data():
         return jsonify({"error": f"读取历史数据失败：{error}"}), 500
 
 @app.route("/api/export/<record_type>")
+@login_required
 def export_history(record_type):
     """导出筛选后的历史报警或监测数据 CSV 文件。"""
     file_map = {

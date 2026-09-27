@@ -126,6 +126,12 @@
     }]
   });
 
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
   function setConnectionStatus(isConnected, message) {
     const statusElement = document.getElementById('connectionStatus'); // 数据连接状态显示元素
     statusElement.className = isConnected ? 'connection-status' : 'connection-status error';
@@ -135,6 +141,7 @@
   async function refresh() {
     try {
       const response = await fetch('/api/data'); // 获取实时监测数据的响应
+      if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
       const dashboardData = await response.json(); // 后端返回的大屏数据
 
@@ -172,7 +179,7 @@
       });
 
       document.getElementById('alarmTable').innerHTML = dashboardData.alarms.map(alarmItem =>
-        `<tr><td>${alarmItem.time}</td><td class="alarm">${alarmItem.strain}</td><td class="alarm">${alarmItem.type}</td><td>${alarmItem.status}</td><td>${alarmItem.status === '未处理' ? `<button class="ack-btn" onclick="acknowledgeAlarm(${alarmItem.id})">确认处理</button>` : '已完成'}</td></tr>`
+        `<tr><td>${escapeHtml(alarmItem.time)}</td><td class="alarm">${escapeHtml(alarmItem.strain)}</td><td class="alarm">${escapeHtml(alarmItem.type)}</td><td>${escapeHtml(alarmItem.status)}</td><td>${alarmItem.status === '未处理' ? `<button class="ack-btn" onclick="acknowledgeAlarm(${alarmItem.id})">确认处理</button>` : '已完成'}</td></tr>`
       ).join('');
       setConnectionStatus(true, '● 数据连接正常');
     } catch (error) {
@@ -185,6 +192,7 @@
     if (!confirm('确定清除当前报警和 CSV 历史报警吗？')) return;
     try {
       const response = await fetch('/api/clear_alarms', { method: 'POST' }); // 清除报警请求的响应
+      if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
       refresh();
     } catch (error) {
@@ -196,6 +204,7 @@
   async function acknowledgeAlarm(alarmId) {
     try {
       const response = await fetch(`/api/acknowledge_alarm/${alarmId}`, { method: 'POST' }); // 确认处理报警的响应
+      if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
       refresh();
     } catch (error) {
@@ -208,6 +217,7 @@
     if (!confirm('确定清除当前数据和 CSV 历史数据吗？')) return;
     try {
       const response = await fetch('/api/clear_data', { method: 'POST' }); // 清除数据请求的响应
+      if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
       refresh();
     } catch (error) {

@@ -1,0 +1,7 @@
+# 桥体卫士 —— Python 依赖清单
+# 安装：pip install -r requirements.txt
+
+Flask>=3.0,<4.0        # Web 框架
+python-dotenv>=1.0     # .env 环境变量加载（可选增强，未安装时 config.py 自动降级）
+pyserial>=3.5          # 串口模式（DATA_SOURCE=serial）读取 ESP32；纯模拟模式可省略
+pytest>=8.0            # 自动化测试

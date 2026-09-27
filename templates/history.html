@@ -79,6 +79,12 @@
   const threshold = {{ threshold }}; // 后端设定的报警阈值
   let currentTab = 'alarm'; // 当前打开的历史记录标签页
 
+  function escapeHtml(value) {
+    return String(value).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
   function showHistoryMessage(message) {
     document.getElementById('historyMessage').textContent = message; // 历史页面错误提示
   }
@@ -112,10 +118,11 @@
   async function loadAlarms() {
     try {
       const response = await fetch(`/api/history_alarms?${getQueryString()}`); // 获取筛选后历史报警的响应
+      if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
       const alarmRows = await response.json(); // CSV 中的历史报警行
       const tableHtml = alarmRows.slice().reverse().map(alarmRow =>
-        `<tr><td>${alarmRow[0]}</td><td class="alarm">${alarmRow[1]}</td><td class="alarm">${alarmRow[2]}</td><td>${alarmRow[3] || '历史记录'}</td></tr>`
+        `<tr><td>${escapeHtml(alarmRow[0])}</td><td class="alarm">${escapeHtml(alarmRow[1])}</td><td class="alarm">${escapeHtml(alarmRow[2])}</td><td>${escapeHtml(alarmRow[3] || '历史记录')}</td></tr>`
       ).join('');
       document.getElementById('histAlarmTable').innerHTML =
         tableHtml || '<tr><td colspan="3">暂无历史报警</td></tr>';
@@ -129,6 +136,7 @@
   async function loadData() {
     try {
       const response = await fetch(`/api/history_data?${getQueryString()}`); // 获取筛选后历史数据的响应
+      if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
       const dataRows = await response.json(); // CSV 中的历史数据行
       if (dataRows.length === 0) {

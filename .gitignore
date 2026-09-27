@@ -179,3 +179,12 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+
+# 桥体卫士 —— 本地数据库与运行产物
+*.db
+*.sqlite
+*.sqlite3
+bridge.db
+
+# WorkBuddy 工作目录（本地记忆/日志，不入库）
+.workbuddy/
