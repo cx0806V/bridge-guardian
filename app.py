@@ -12,6 +12,7 @@
 from flask import Flask, request, session, redirect, render_template, jsonify, Response, url_for
 from functools import wraps
 import io
+import secrets
 import threading
 import time
 import csv
@@ -20,21 +21,32 @@ from datetime import datetime
 from config import Config
 from db import Database, now_str
 from rules import RuleEngine
-from datasource import SimulatedSource, SerialSource
+from datasource import SimulatedSource, SerialSource, UNIT
 
 app = Flask(__name__)
 app.secret_key = Config.SECRET_KEY
 app.config["TEMPLATES_AUTO_RELOAD"] = True   # 模板改动立即生效，不用重启
 
+# Session Cookie 加固：HttpOnly + SameSite=Lax；Secure 仅在有 HTTPS 时开启
+app.config["SESSION_COOKIE_HTTPONLY"] = Config.SESSION_COOKIE_HTTPONLY
+app.config["SESSION_COOKIE_SAMESITE"] = Config.SESSION_COOKIE_SAMESITE
+app.config["SESSION_COOKIE_SECURE"] = Config.SESSION_COOKIE_SECURE
+
 # ---------- 全局配置（从环境变量 / .env 集中读取，不硬编码密钥） ----------
 USERNAME = Config.USERNAME        # 登录账号
-PASSWORD = Config.PASSWORD        # 登录密码
-THRESHOLD = Config.THRESHOLD      # 报警阈值（单位 με）
+THRESHOLD = Config.THRESHOLD      # 报警阈值（相对应变指标，无量纲）
 SAMPLE_INTERVAL = Config.SAMPLE_INTERVAL  # 数据采集周期（秒）
 
 # ---------- 采集参数 ----------
 HISTORY_LIMIT = 60                # 实时曲线保留点数
 ALARM_CACHE_LIMIT = 200           # 大屏报警缓存条数
+
+# 模拟模式可控场景（与 datasource.SimulatedSource 保持一致）
+SCENARIOS = ("normal", "warn", "alarm", "critical", "offline", "recover")
+SCENARIO_LABELS = {
+    "normal": "正常运行", "warn": "预警", "alarm": "报警",
+    "critical": "严重报警", "offline": "设备离线", "recover": "设备恢复",
+}
 
 
 # ---------- 禁止浏览器缓存：改完页面普通刷新就是最新版 ----------
@@ -42,6 +54,42 @@ ALARM_CACHE_LIMIT = 200           # 大屏报警缓存条数
 def no_cache(response):
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+# ---------- CSRF 防护（基于 Session 的同步令牌校验）----------
+def _csrf_token():
+    """获取或创建 session 中的 CSRF token。"""
+    token = session.get(Config.CSRF_TOKEN_NAME)
+    if not token:
+        token = secrets.token_hex(16)
+        session[Config.CSRF_TOKEN_NAME] = token
+    return token
+
+
+@app.before_request
+def csrf_protect():
+    """对状态变更方法（POST/PUT/PATCH/DELETE）强制校验 CSRF token。
+
+    采用基于 Session 的同步令牌校验（Synchronizer Token Pattern）：登录后后端在
+    session 中生成 token，前端读取后经 X-CSRF-Token 头回传，后端与 session 中的
+    值做常量时间比对。登录接口与未登录请求豁免（登录前无可信 token，
+    未登录请求交给 login_required 返回 401）。
+    """
+    if request.method not in ("POST", "PUT", "PATCH", "DELETE"):
+        return None
+    # 登录接口豁免：登录前的 POST 不校验 CSRF
+    if request.path == "/login":
+        return None
+    # 未登录请求豁免 CSRF，交给 login_required 返回 401（保持原有语义）
+    if "user" not in session:
+        return None
+    token = request.headers.get(Config.CSRF_HEADER)
+    expected = session.get(Config.CSRF_TOKEN_NAME)
+    if not token or not expected or not secrets.compare_digest(token, expected):
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "CSRF 校验失败，请刷新页面后重试"}), 403
+        return "CSRF 校验失败", 403
+    return None
 
 
 def login_required(view):
@@ -99,6 +147,29 @@ class Simulator:
         if Config.DATA_SOURCE == "serial":
             return SerialSource(Config.SERIAL_PORT, Config.SERIAL_BAUD)
         return SimulatedSource()
+
+    def current_scenario(self):
+        """返回当前模拟场景名（仅模拟模式有意义，串口模式返回 None）。"""
+        src = self.data_source
+        if isinstance(src, SimulatedSource):
+            return src.scenario
+        return None
+
+    def set_scenario(self, actor, name):
+        """切换模拟场景（仅模拟模式有效），写入审计。串口模式拒绝切换。"""
+        src = self.data_source
+        if not isinstance(src, SimulatedSource):
+            return False, "真实串口模式下不可切换模拟场景"
+        if name not in SCENARIOS:
+            return False, f"未知场景 {name!r}"
+        with self.lock:
+            ok = src.set_scenario(name)
+            if ok:
+                self.db.add_audit(actor, "set_scenario",
+                                  f"模拟场景切换为 {SCENARIO_LABELS.get(name, name)}")
+                # 场景切换会影响规则引擎状态，重置避免残留滞回/边沿状态
+                self.engine.reset()
+        return ok, ""
 
     def start(self):
         threading.Thread(target=self._loop, daemon=True).start()
@@ -269,8 +340,10 @@ def index():
 def login():
     error = ""
     if request.method == "POST":
-        if request.form.get("username") == USERNAME and request.form.get("password") == PASSWORD:
+        if request.form.get("username") == USERNAME and Config.verify_password(request.form.get("password", "")):
+            session.clear()
             session["user"] = request.form["username"]
+            _csrf_token()  # 登录成功后立即建立 CSRF token
             return redirect("/dashboard")
         error = "用户名或密码错误"
     return render_template("login.html", error=error)
@@ -286,21 +359,23 @@ def logout():
 @login_required
 def dashboard():
     return render_template("dashboard.html", user=session["user"],
-                           threshold=simulator.latest["threshold"])
+                           threshold=simulator.latest["threshold"],
+                           csrf_token=_csrf_token(), unit=UNIT)
 
 
 @app.route("/settings")
 @login_required
 def settings_page():
     """系统设置页，用于调整报警阈值和采集周期。"""
-    return render_template("settings.html")
+    return render_template("settings.html", csrf_token=_csrf_token(), unit=UNIT)
 
 
 @app.route("/history")
 @login_required
 def history_page():
     """历史记录页：点击主画面入口进入，点返回回主画面"""
-    return render_template("history.html", threshold=simulator.latest["threshold"])
+    return render_template("history.html", threshold=simulator.latest["threshold"],
+                           csrf_token=_csrf_token(), unit=UNIT)
 
 
 # ================= 数据接口 =================
@@ -320,6 +395,9 @@ def api_data():
             "sensor_status": simulator.latest["sensor_status"],
             "device_id": simulator.device_id,
             "source": simulator.source,
+            "unit": UNIT,                       # 单位口径：相对应变指标（无量纲）
+            "is_simulated": simulator.source == "sim",   # 是否模拟（前端据此标注水印）
+            "scenario": simulator.current_scenario(),     # 当前模拟场景（仅 sim 模式）
             "device_health": simulator.latest.get("device_health"),
             "rate": simulator.latest.get("rate"),
             "uptime": int(time.time() - simulator._start_time),
@@ -381,6 +459,28 @@ def acknowledge_alarm(alarm_id):
     return jsonify({"error": "报警不存在或已被清除。"}), 404
 
 
+@app.route("/api/scenario", methods=["GET", "POST"])
+@login_required
+def scenario():
+    """模拟模式可控场景：GET 返回当前场景与可选场景，POST 切换场景。
+
+    仅 DATA_SOURCE=sim 时可用；串口模式下切换会被拒绝（诚实边界：真实模式不伪造数据）。
+    """
+    if request.method == "GET":
+        return jsonify({
+            "current": simulator.current_scenario(),
+            "is_simulated": simulator.source == "sim",
+            "scenarios": [{"key": k, "label": SCENARIO_LABELS[k]} for k in SCENARIOS],
+        })
+    name = request.json.get("scenario") if request.json else None
+    if not name:
+        return jsonify({"error": "缺少 scenario 字段"}), 400
+    ok, err = simulator.set_scenario(session["user"], name)
+    if not ok:
+        return jsonify({"error": err}), 400
+    return jsonify({"ok": True, "scenario": name})
+
+
 @app.route("/api/history_alarms")
 @login_required
 def history_alarms():
@@ -405,12 +505,12 @@ def export_history(record_type):
     end = request.args.get("end")
     if record_type == "alarms":
         rows = simulator.db.query_alarms(start, end)
-        header = ["时间", "应变值(με)", "等级", "规则", "原因", "处理状态"]
+        header = ["时间", "应变指标", "等级", "规则", "原因", "处理状态"]
         data = [[r["ts"], r["value"], r["level"], r["rule"], r["reason"], r["status"]] for r in rows]
         return _csv_response(header, data, "alarms_history.csv")
     if record_type == "data":
         rows = simulator.db.query_samples(start, end)
-        header = ["时间", "应变值(με)"]
+        header = ["时间", "应变指标(相对应变，无量纲)"]
         data = [[r["ts"], r["value"]] for r in rows]
         return _csv_response(header, data, "data_history.csv")
     return jsonify({"error": "不支持的导出类型。"}), 404

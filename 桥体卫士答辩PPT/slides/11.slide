@@ -1,0 +1,38 @@
+<Slide style={{ background: '#FFFFFF', width: '1280px', height: '720px', padding: '0 40px' }}>
+  <Box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <Box style={{ height: 88, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #1E4FA8' }}>
+      <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#0E3F8C' }}>实测标定结果 · 数据可追溯</Text>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士</Text>
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'row', gap: 24, padding: '18px 0' }}>
+      <Box style={{ flex: 1.3, flexDirection: 'column', gap: 12 }}>
+        <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#0E3F8C' }}>标定流程（可复现）</Text>
+        {[
+          '① 空载标零点：静置稳定，记录 OFFSET',
+          '② 多档加载：≥3 档已知载荷',
+          '③ 每档 ≥5 次重复测量，取均值与标准差',
+          '④ 线性拟合得 SCALE，写回固件并 +1 版本号',
+        ].map((item, idx) => (
+          <Box key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, background: '#F7F9FC', border: '1px solid #D6DCE5', borderRadius: 8, padding: '10px 14px' }}>
+            <Text style={{ fontSize: 17, color: '#4A5568', flex: 1 }}>{item}</Text>
+          </Box>
+        ))}
+        <Text style={{ fontSize: 15, color: '#8B97A8', marginTop: 4, lineHeight: 1.6 }}>单位口径：原始 ADC 值（raw_value）与相对应变指标（calibrated_value）严格区分，不声称微应变精度。</Text>
+      </Box>
+      <Box style={{ flex: 1, flexDirection: 'column', gap: 10, background: '#E8EFF8', borderRadius: 10, padding: 18 }}>
+        <Text style={{ fontSize: 20, fontWeight: 'bold', color: '#0E3F8C' }}>标定结果（待实测填入）</Text>
+        {['平均值', '标准差 σ', '最大误差', '稳定时间', '采样周期', '重复性'].map((k, idx) => (
+          <Box key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px dashed #D6DCE5' }}>
+            <Text style={{ fontSize: 16, color: '#4A5568' }}>{k}</Text>
+            <Text style={{ fontSize: 16, color: '#D9534F', fontWeight: 'bold' }}>待实测</Text>
+          </Box>
+        ))}
+        <Text style={{ fontSize: 14, color: '#8B97A8', lineHeight: 1.6, marginTop: 6 }}>结论只能来自真实测试数据；无数据处如实标注「待实测」，禁止编造精度。</Text>
+      </Box>
+    </Box>
+    <Box style={{ height: 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #E5E7EB' }}>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士 · 桥梁结构健康监测缩尺原型</Text>
+      <Text style={{ fontSize: 14, color: '#1E4FA8', fontWeight: 'bold' }}>11 / 14</Text>
+    </Box>
+  </Box>
+</Slide>

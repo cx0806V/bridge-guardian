@@ -26,6 +26,20 @@
       background:#123052; color:var(--accent); border:1px solid var(--line); }
     .source-badge.serial { color:#ffd166; border-color:#5c4a1f; background:#2a2210; }
 
+    /* 模拟演示水印 + 场景切换面板 */
+    .demo-banner { text-align:center; font-size:13px; font-weight:700; letter-spacing:2px;
+      color:#ffd166; background:rgba(251,191,36,.08); border:1px dashed rgba(251,191,36,.5);
+      padding:6px 12px; border-radius:8px; margin-bottom:10px; }
+    .scenario-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+      background:var(--panel); border:1px solid var(--border); border-radius:10px;
+      padding:10px 14px; margin-bottom:12px; }
+    .scenario-title { font-size:13px; color:var(--muted); margin-right:4px; }
+    .scn-btn { border:1px solid var(--line); background:#123052; color:var(--accent);
+      border-radius:6px; padding:5px 12px; cursor:pointer; font-size:12px; }
+    .scn-btn:hover { background:#1a3f6e; border-color:var(--accent); }
+    .scn-btn.active { background:#1e88e5; color:#fff; border-color:#1e88e5; }
+    .scenario-current { margin-left:auto; font-size:12px; color:var(--muted); }
+
     /* KPI 行 */
     .kpi { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:12px; }
     .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px; position:relative; }
@@ -39,6 +53,7 @@
       transition:background .4s, border-color .4s; }
     .risk-label { font-size:16px; letter-spacing:3px; font-weight:800; }
     .risk-value { font-size:42px; font-weight:800; line-height:1.1; margin:4px 0; font-variant-numeric:tabular-nums; }
+    .risk-unit { font-size:14px; font-weight:600; margin-left:6px; opacity:.85; }
     .risk-sub { font-size:13px; color:var(--muted); display:flex; gap:14px; }
     .risk-normal { color:var(--ok); background:rgba(74,222,128,.08); border-color:rgba(74,222,128,.35); }
     .risk-warn   { color:var(--warn); background:rgba(251,191,36,.08); border-color:rgba(251,191,36,.35); }
@@ -108,6 +123,23 @@
   </div>
 </header>
 
+<!-- 模拟演示水印（仅模拟模式显示，明确标注，不伪装真实硬件） -->
+<div class="demo-banner" id="demoBanner" style="display:none">
+  模拟演示 · 非真实硬件数据
+</div>
+
+<!-- 模拟场景切换面板（仅模拟模式显示） -->
+<div class="scenario-bar" id="scenarioBar" style="display:none">
+  <span class="scenario-title">模拟场景</span>
+  <button class="scn-btn" data-scn="normal" onclick="setScenario('normal')">正常运行</button>
+  <button class="scn-btn" data-scn="warn" onclick="setScenario('warn')">预警</button>
+  <button class="scn-btn" data-scn="alarm" onclick="setScenario('alarm')">报警</button>
+  <button class="scn-btn" data-scn="critical" onclick="setScenario('critical')">严重报警</button>
+  <button class="scn-btn" data-scn="offline" onclick="setScenario('offline')">设备离线</button>
+  <button class="scn-btn" data-scn="recover" onclick="setScenario('recover')">设备恢复</button>
+  <span class="scenario-current" id="scenarioCurrent">当前：正常运行</span>
+</div>
+
 <!-- 顶部 KPI 行 -->
 <div class="kpi">
 
@@ -116,7 +148,7 @@
     <h3><span class="dot"></span>当前风险</h3>
     <div class="risk-card risk-normal" id="riskCard">
       <div class="risk-label" id="riskLabel">--</div>
-      <div class="risk-value" id="strainNum">--</div>
+      <div class="risk-value"><span id="strainNum">--</span><span class="risk-unit" id="strainUnit">{{ unit }}</span></div>
       <div class="risk-sub">
         <span>阈值 <b id="thresholdShow">{{ threshold }}</b></span>
         <span>变化率 <b id="rateShow">--</b></span>
@@ -180,7 +212,7 @@
   </h3>
   <table>
     <thead><tr>
-      <th>时间</th><th>应变值(με)</th><th>等级</th><th>规则</th><th>原因</th><th>状态</th><th>操作</th>
+      <th>时间</th><th>应变指标</th><th>等级</th><th>规则</th><th>原因</th><th>状态</th><th>操作</th>
     </tr></thead>
     <tbody id="alarmTable"></tbody>
   </table>
@@ -188,6 +220,8 @@
 </div>
 
 <script>
+  const CSRF_TOKEN = {{ csrf_token|tojson }};
+  const UNIT = {{ unit|tojson }};
   const gaugeChart = echarts.init(document.getElementById('gauge'));
   const lineChart = echarts.init(document.getElementById('chart'));
 
@@ -196,7 +230,7 @@
       type:'gauge', min:0, max:200,
       axisLine:{ lineStyle:{ width:12, color:[[0.6,'#4ade80'],[0.75,'#fbbf24'],[0.9,'#fb923c'],[1,'#ef4444']] } },
       pointer:{ itemStyle:{ color:'#ffb74d' } },
-      detail:{ formatter:'{value} με', color:'#cfe8ff', fontSize:16 },
+      detail:{ formatter:'{value}', color:'#cfe8ff', fontSize:16 },
       data:[{ value:0 }]
     }]
   });
@@ -206,7 +240,7 @@
     yAxis:{ type:'value', axisLabel:{ color:'#7a9cc0' } },
     tooltip:{ trigger:'axis' },
     series:[{
-      name:'应变值', type:'line', data:[], smooth:true, showSymbol:false,
+      name:'应变指标', type:'line', data:[], smooth:true, showSymbol:false,
       lineStyle:{ color:'#4fc3f7', width:2 }, areaStyle:{ color:'rgba(79,195,247,0.12)' },
       markLine:{
         data:[{ yAxis:{{ threshold }}, name:'阈值' }],
@@ -248,13 +282,14 @@
       const card = document.getElementById('riskCard');
       card.className = 'risk-card ' + risk.cls;
       document.getElementById('riskLabel').textContent = risk.label;
-      document.getElementById('strainNum').textContent = d.strain.toFixed(2) + ' με';
+      document.getElementById('strainNum').textContent = d.strain.toFixed(2);
+      document.getElementById('strainUnit').textContent = UNIT;
       document.getElementById('thresholdShow').textContent = d.threshold;
       // 变化率
       const rateEl = document.getElementById('rateShow');
       if (d.rate == null) { rateEl.textContent = '--'; rateEl.className='rate-flat'; }
       else {
-        rateEl.textContent = (d.rate>0?'+':'') + d.rate + ' με';
+        rateEl.textContent = (d.rate>0?'+':'') + d.rate;
         rateEl.className = d.rate>0 ? 'rate-up' : (d.rate<0 ? 'rate-down' : 'rate-flat');
       }
 
@@ -269,6 +304,19 @@
       document.getElementById('healthError').textContent = h.last_error || '无';
       document.getElementById('sourceBadge').textContent = '数据源：' + (d.source==='serial' ? '串口(真实)' : '模拟');
       document.getElementById('sourceBadge').className = 'source-badge' + (d.source==='serial' ? ' serial' : '');
+
+      // 模拟模式：显示水印 + 场景面板；串口模式隐藏（真实数据不做场景切换）
+      const isSim = d.source === 'sim';
+      document.getElementById('demoBanner').style.display = isSim ? 'block' : 'none';
+      document.getElementById('scenarioBar').style.display = isSim ? 'flex' : 'none';
+      if (isSim) {
+        const scn = d.scenario || 'normal';
+        const labelMap = { normal:'正常运行', warn:'预警', alarm:'报警', critical:'严重报警', offline:'设备离线', recover:'设备恢复' };
+        document.getElementById('scenarioCurrent').textContent = '当前：' + (labelMap[scn] || scn);
+        document.querySelectorAll('.scn-btn').forEach(b => {
+          b.className = 'scn-btn' + (b.dataset.scn === scn ? ' active' : '');
+        });
+      }
 
       // 待处置报警
       const alarms = d.alarms || [];
@@ -315,10 +363,12 @@
   }
 
   async function clearAlarms(){ if(!confirm('确定清除当前报警和历史报警记录吗？'))return;
-    try{ const r=await fetch('/api/clear_alarms',{method:'POST'}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; refresh(); }catch(e){ setConn(false,'⚠ 清除报警失败'); } }
-  async function acknowledgeAlarm(id){ try{ const r=await fetch(`/api/acknowledge_alarm/${id}`,{method:'POST'}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; refresh(); }catch(e){ setConn(false,'⚠ 确认报警失败'); } }
+    try{ const r=await fetch('/api/clear_alarms',{method:'POST',headers:{'X-CSRF-Token':CSRF_TOKEN}}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; refresh(); }catch(e){ setConn(false,'⚠ 清除报警失败'); } }
+  async function acknowledgeAlarm(id){ try{ const r=await fetch(`/api/acknowledge_alarm/${id}`,{method:'POST',headers:{'X-CSRF-Token':CSRF_TOKEN}}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; refresh(); }catch(e){ setConn(false,'⚠ 确认报警失败'); } }
   async function clearData(){ if(!confirm('确定清除当前数据和历史数据记录吗？'))return;
-    try{ const r=await fetch('/api/clear_data',{method:'POST'}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; refresh(); }catch(e){ setConn(false,'⚠ 清除数据失败'); } }
+    try{ const r=await fetch('/api/clear_data',{method:'POST',headers:{'X-CSRF-Token':CSRF_TOKEN}}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; refresh(); }catch(e){ setConn(false,'⚠ 清除数据失败'); } }
+
+  async function setScenario(name){ try{ const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF_TOKEN},body:JSON.stringify({scenario:name})}); if(r.status===401){location.href='/login';return;} if(!r.ok){const e=await r.json().catch(()=>({})); setConn(false,'⚠ 切换场景失败：'+(e.error||r.status));} refresh(); }catch(e){ setConn(false,'⚠ 切换场景失败'); } }
 
   refresh();
   setInterval(refresh, 1000);

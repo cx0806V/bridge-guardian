@@ -58,7 +58,7 @@ class RuleEngine:
                 alarms.append({
                     "rule": "阈值超限",
                     "level": self._level(value, self.threshold),
-                    "reason": "应变值 %.2f με 超过阈值 %.2f με" % (value, self.threshold),
+                    "reason": "应变指标 %.2f 超过阈值 %.2f（相对应变指标，无量纲）" % (value, self.threshold),
                 })
             self._over_count += 1
         else:
@@ -74,7 +74,7 @@ class RuleEngine:
                 alarms.append({
                     "rule": "变化率突变",
                     "level": "严重报警" if abs(delta) >= self.rate_limit * 2 else "报警",
-                    "reason": "单周期变化 %+.2f με，超过变化率阈值 ±%.2f με" % (delta, self.rate_limit),
+                    "reason": "单周期变化 %+.2f，超过变化率阈值 ±%.2f（相对应变指标）" % (delta, self.rate_limit),
                 })
 
         # 3. 持续超限（连续达到 N 点报一次，回到安全区后重置）
@@ -83,7 +83,7 @@ class RuleEngine:
             alarms.append({
                 "rule": "持续超限",
                 "level": "严重报警",
-                "reason": "连续 %d 个采样点超过阈值 %.2f με" % (self._over_count, self.threshold),
+                "reason": "连续 %d 个采样点超过阈值 %.2f（相对应变指标）" % (self._over_count, self.threshold),
             })
 
         values = [v for _, v in self._window]
@@ -97,7 +97,7 @@ class RuleEngine:
                 alarms.append({
                     "rule": "短时波动",
                     "level": "预警",
-                    "reason": "近 %d 点峰谷差 %.2f με，超过波动阈值 %.2f με" % (
+                    "reason": "近 %d 点峰谷差 %.2f，超过波动阈值 %.2f（相对应变指标）" % (
                         self.volatility_window, span, self.volatility_limit),
                 })
             elif span < self.volatility_limit * 0.5:
@@ -117,7 +117,7 @@ class RuleEngine:
                     alarms.append({
                         "rule": "基线偏移",
                         "level": "预警" if abs(drift) < self.drift_limit * 2 else "报警",
-                        "reason": "近期均值 %.2f με 相对基线 %.2f με 偏移 %+.2f με，超过阈值 %.2f με" % (
+                        "reason": "近期均值 %.2f 相对基线 %.2f 偏移 %+.2f，超过阈值 %.2f（相对应变指标）" % (
                             recent_mean, baseline, drift, self.drift_limit),
                     })
                 elif abs(drift) < self.drift_limit * 0.5:

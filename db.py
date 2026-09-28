@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS samples (
     ts TEXT NOT NULL,           -- 采样时间 YYYY-MM-DD HH:MM:SS
     device_id TEXT NOT NULL,    -- 设备标识
     source TEXT NOT NULL,       -- 数据来源 sim / serial
-    value REAL NOT NULL,        -- 应变值 με
+    value REAL NOT NULL,        -- 相对应变指标（无量纲，非工程微应变）
     seq INTEGER NOT NULL        -- 采样序号
 );
 CREATE INDEX IF NOT EXISTS idx_samples_ts ON samples(ts);

@@ -1,0 +1,31 @@
+<Slide style={{ background: '#0E3F8C', width: '1280px', height: '720px', padding: '0 40px' }}>
+  <Box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <Box style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 40, paddingTop: 20 }}>
+      <Box style={{ width: '34%', flexDirection: 'column', gap: 14 }}>
+        <Text style={{ fontSize: 40, fontWeight: 'bold', color: '#FFFFFF' }}>系统限制</Text>
+        <Text style={{ fontSize: 18, color: '#C9D9EF', lineHeight: 1.7 }}>· 单设备原型，无冗余</Text>
+        <Text style={{ fontSize: 18, color: '#C9D9EF', lineHeight: 1.7 }}>· 相对应变指标，非工程微应变</Text>
+        <Text style={{ fontSize: 18, color: '#C9D9EF', lineHeight: 1.7 }}>· 采样周期 1s，非毫秒实时</Text>
+        <Text style={{ fontSize: 18, color: '#C9D9EF', lineHeight: 1.7 }}>· 未做长期稳定性验证</Text>
+      </Box>
+      <Box style={{ flex: 1, flexDirection: 'column', gap: 14 }}>
+        <Text style={{ fontSize: 40, fontWeight: 'bold', color: '#FFFFFF' }}>工程化扩展方向</Text>
+        {[
+          '多测点扩展：数据模型已含 device_id，串口层支持多路即可',
+          'HTTP 备份通道：串口 USB 主用，HTTP 备选',
+          '长期稳定性测试：连续运行 + 漂移/迟滞记录',
+          '更细的标定：增加载荷档位，提升线性度证据',
+        ].map((item, idx) => (
+          <Box key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#FFC107', width: 30 }}>{idx + 1}</Text>
+            <Text style={{ fontSize: 19, color: '#FFFFFF' }}>{item}</Text>
+          </Box>
+        ))}
+      </Box>
+    </Box>
+    <Box style={{ height: 100, flexDirection: 'column', justifyContent: 'center', alignItems: 'center', borderTop: '1px solid #3D5B8C' }}>
+      <Text style={{ fontSize: 26, fontWeight: 'bold', color: '#FFFFFF', letterSpacing: 2 }}>说得出口，必拿得出证据；拿不出证据，如实说「待实测」</Text>
+      <Text style={{ fontSize: 16, color: '#C9D9EF', marginTop: 10 }}>感谢各位评委</Text>
+    </Box>
+  </Box>
+</Slide>

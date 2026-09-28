@@ -80,9 +80,9 @@
 
 <div id="dataSection" style="display:none">
   <div class="stats">
-    <div class="stat"><span id="avgAll">--</span><label>平均应变 (με)</label></div>
-    <div class="stat"><span id="maxAll">--</span><label>最大值 (με)</label></div>
-    <div class="stat"><span id="minAll">--</span><label>最小值 (με)</label></div>
+    <div class="stat"><span id="avgAll">--</span><label>平均应变指标</label></div>
+    <div class="stat"><span id="maxAll">--</span><label>最大值</label></div>
+    <div class="stat"><span id="minAll">--</span><label>最小值</label></div>
     <div class="stat"><span id="overCount">--</span><label>超限次数 (<span id="overCountLabel">>{{ threshold }}</span>)</label></div>
     <div class="stat"><span id="compare">--</span><label>后半段 vs 前半段均值</label></div>
   </div>
@@ -198,7 +198,7 @@
         tooltip: { trigger: 'axis' },
         dataZoom: [{ type: 'inside' }],
         series: [{
-          name: '应变值', type: 'line', data: strainValues, smooth: true, showSymbol: false,
+          name: '应变指标', type: 'line', data: strainValues, smooth: true, showSymbol: false,
           lineStyle: { color: '#4fc3f7', width: 2 },
           markLine: {
             data: [{ yAxis: currentThreshold, name: '阈值' }],

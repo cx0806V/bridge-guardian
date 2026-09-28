@@ -1,0 +1,28 @@
+<Slide style={{ background: '#FFFFFF', width: '1280px', height: '720px', padding: '0 40px' }}>
+  <Box style={{ flexDirection: 'column', width: '100%', height: '100%' }}>
+    <Box style={{ height: 88, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #1E4FA8' }}>
+      <Text style={{ fontSize: 32, fontWeight: 'bold', color: '#0E3F8C' }}>双模式真实边界 · 不伪装</Text>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士</Text>
+    </Box>
+    <Box style={{ flex: 1, flexDirection: 'row', gap: 24, padding: '18px 0' }}>
+      <Box style={{ flex: 1, flexDirection: 'column', gap: 12, background: '#F7F9FC', border: '1px solid #D6DCE5', borderRadius: 10, padding: 20 }}>
+        <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#0E3F8C' }}>模拟模式（sim）</Text>
+        <Text style={{ fontSize: 17, color: '#4A5568', lineHeight: 1.7 }}>· 六场景一键复现（正常/预警/报警/严重/离线/恢复）</Text>
+        <Text style={{ fontSize: 17, color: '#4A5568', lineHeight: 1.7 }}>· 界面明确标注「模拟演示 · 非真实硬件数据」水印</Text>
+        <Text style={{ fontSize: 17, color: '#4A5568', lineHeight: 1.7 }}>· 场景切换写入审计，可追溯</Text>
+        <Text style={{ fontSize: 17, color: '#D9534F', lineHeight: 1.7, fontWeight: 'bold' }}>· 绝不伪装成真实硬件数据</Text>
+      </Box>
+      <Box style={{ flex: 1, flexDirection: 'column', gap: 12, background: '#E8EFF8', border: '1px solid #3D7BD9', borderRadius: 10, padding: 20 }}>
+        <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#0E3F8C' }}>真实串口模式（serial）</Text>
+        <Text style={{ fontSize: 17, color: '#4A5568', lineHeight: 1.7 }}>· 只展示 ESP32 串口上行数据</Text>
+        <Text style={{ fontSize: 17, color: '#4A5568', lineHeight: 1.7 }}>· 断连如实「设备离线」，不沿用旧值制造在线假象</Text>
+        <Text style={{ fontSize: 17, color: '#4A5568', lineHeight: 1.7 }}>· 拒绝切换模拟场景（/api/scenario 返回错误）</Text>
+        <Text style={{ fontSize: 17, color: '#1E4FA8', lineHeight: 1.7, fontWeight: 'bold' }}>· 串口协议含 schema_version/seq/raw/calibrated/标定版本/状态</Text>
+      </Box>
+    </Box>
+    <Box style={{ height: 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #E5E7EB' }}>
+      <Text style={{ fontSize: 14, color: '#8B97A8' }}>桥体卫士 · 桥梁结构健康监测缩尺原型</Text>
+      <Text style={{ fontSize: 14, color: '#1E4FA8', fontWeight: 'bold' }}>13 / 14</Text>
+    </Box>
+  </Box>
+</Slide>

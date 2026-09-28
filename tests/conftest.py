@@ -26,7 +26,20 @@ def client():
         yield c
 
 
+def _csrf_token(client):
+    """从 session 获取 CSRF token（登录后由 _csrf_token 建立）。"""
+    from flask import session
+    with client.session_transaction() as sess:
+        return sess.get(app.Config.CSRF_TOKEN_NAME)
+
+
 @pytest.fixture()
 def authed_client(client):
     client.post("/login", data={"username": "admin", "password": "123456"})
     return client
+
+
+@pytest.fixture()
+def csrf_headers(authed_client):
+    """返回带 CSRF 头的请求头，供 POST 用例复用。"""
+    return {"X-CSRF-Token": _csrf_token(authed_client)}

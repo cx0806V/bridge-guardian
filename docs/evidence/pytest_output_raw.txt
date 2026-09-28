@@ -1,0 +1,45 @@
+============================= test session starts =============================
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\CX\.workbuddy\binaries\python\envs\default\Scripts\python.exe
+cachedir: .pytest_cache
+rootdir: C:\Users\CX\Documents\GitHub\bridge guardian
+collecting ... collected 37 items
+
+tests/test_api.py::test_data_snapshot_fields PASSED                      [  2%]
+tests/test_api.py::test_settings_roundtrip PASSED                        [  5%]
+tests/test_api.py::test_settings_invalid PASSED                          [  8%]
+tests/test_api.py::test_ack_alarm PASSED                                 [ 10%]
+tests/test_api.py::test_export_csv PASSED                                [ 13%]
+tests/test_api.py::test_history_empty_ok PASSED                          [ 16%]
+tests/test_api.py::test_data_snapshot_has_unit_and_sim_flag PASSED       [ 18%]
+tests/test_api.py::test_scenario_switch_and_csrf PASSED                  [ 21%]
+tests/test_api.py::test_scenario_invalid_rejected PASSED                 [ 24%]
+tests/test_auth.py::test_unauth_api_401 PASSED                           [ 27%]
+tests/test_auth.py::test_unauth_page_redirect PASSED                     [ 29%]
+tests/test_auth.py::test_login_success PASSED                            [ 32%]
+tests/test_auth.py::test_login_fail PASSED                               [ 35%]
+tests/test_auth.py::test_authed_pages PASSED                             [ 37%]
+tests/test_csrf.py::test_post_without_csrf_rejected PASSED               [ 40%]
+tests/test_csrf.py::test_post_with_csrf_ok PASSED                        [ 43%]
+tests/test_csrf.py::test_post_with_wrong_csrf_rejected PASSED            [ 45%]
+tests/test_csrf.py::test_login_exempt_from_csrf PASSED                   [ 48%]
+tests/test_db.py::test_sample_crud PASSED                                [ 51%]
+tests/test_db.py::test_alarm_ack_rowcount PASSED                         [ 54%]
+tests/test_db.py::test_settings_and_audit PASSED                         [ 56%]
+tests/test_device.py::test_heartbeat_table_crud PASSED                   [ 59%]
+tests/test_device.py::test_device_event_records_alarm PASSED             [ 62%]
+tests/test_device.py::test_offline_online_transition PASSED              [ 64%]
+tests/test_rules.py::test_threshold_edge PASSED                          [ 67%]
+tests/test_rules.py::test_threshold_no_duplicate PASSED                  [ 70%]
+tests/test_rules.py::test_rate_change PASSED                             [ 72%]
+tests/test_rules.py::test_duration_over PASSED                           [ 75%]
+tests/test_rules.py::test_volatility PASSED                              [ 78%]
+tests/test_rules.py::test_baseline_drift PASSED                          [ 81%]
+tests/test_rules.py::test_reason_present_and_readable PASSED             [ 83%]
+tests/test_rules.py::test_level_grading PASSED                           [ 86%]
+tests/test_serial_flow.py::test_serial_full_flow PASSED                  [ 89%]
+tests/test_serial_flow.py::test_serial_plain_number_flow PASSED          [ 91%]
+tests/test_serial_flow.py::test_serial_invalid_line_ignored PASSED       [ 94%]
+tests/test_serial_flow.py::test_serial_new_schema_fields PASSED          [ 97%]
+tests/test_serial_flow.py::test_simulated_scenario_state_machine PASSED  [100%]
+
+============================= 37 passed in 3.28s ==============================

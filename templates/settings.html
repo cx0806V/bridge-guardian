@@ -56,8 +56,8 @@
   <div class="card">
     <h3>监测参数</h3>
     <form id="settingsForm">
-      <label for="threshold">报警阈值（με）</label>
-      <p class="explain">当等效应变值超过该阈值时触发分级报警（预警/报警/严重报警）。单位 με（微应变），范围 1–200。</p>
+      <label for="threshold">报警阈值（{{ unit }}）</label>
+      <p class="explain">当应变指标超过该阈值时触发分级报警（预警/报警/严重报警）。数值为相对应变指标（无量纲），非工程微应变，范围 1–200。</p>
       <input id="threshold" type="number" min="1" max="200" step="0.1" required>
 
       <label for="interval">采集周期（秒）</label>
@@ -81,6 +81,7 @@
 </div>
 
 <script>
+  const CSRF_TOKEN = {{ csrf_token|tojson }};
   const messageElement = document.getElementById('message');
 
   function showMessage(message, isError = false) {
@@ -130,7 +131,7 @@
     try {
       const response = await fetch('/api/settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
         body: JSON.stringify({ threshold: thresholdValue, interval: intervalValue })
       });
       if (response.status === 401) { window.location.href = '/login'; return; }
