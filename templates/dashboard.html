@@ -2,7 +2,10 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07121f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>桥体卫士 — 桥梁结构健康监测大屏</title>
   <script src="/static/echarts.min.js"></script>
   <link rel="stylesheet" href="/static/app.css">
@@ -157,6 +160,14 @@
   </div>
 
 </div>
+
+<!-- 移动端底部导航（窄屏显示，类小程序体验） -->
+<nav class="mobile-nav">
+  <a href="/dashboard" class="active"><span class="m-ico">🏠</span><span>首页</span></a>
+  <a href="/history"><span class="m-ico">📜</span><span>历史</span></a>
+  <a href="/settings"><span class="m-ico">⚙</span><span>设置</span></a>
+  <a href="/logout" class="danger"><span class="m-ico">⏻</span><span>退出</span></a>
+</nav>
 
 <script>
   const CSRF_TOKEN = {{ csrf_token|tojson }};
@@ -372,13 +383,13 @@
       tbody.innerHTML = alarms.slice().reverse().map(a => {
         const isDevice = (a.rule==='设备离线' || a.rule==='设备恢复');
         return `<tr onclick="selectAlarm(${a.id})">
-          <td>${escapeHtml(a.time)}</td>
-          <td class="${levelClass(a.type)}">${isDevice?'--':escapeHtml(a.strain)}</td>
-          <td><span class="badge ${badgeClass(a.type)}">${escapeHtml(a.type)}</span></td>
-          <td>${escapeHtml(a.rule)}</td>
-          <td class="reason-cell">${escapeHtml(a.reason)}</td>
-          <td>${escapeHtml(a.status)}</td>
-          <td>${a.status==='未处理'?`<button class="ack-btn" onclick="event.stopPropagation();acknowledgeAlarm(${a.id})">确认处理</button>`:'<span class="done-tag">已完成</span>'}</td>
+          <td data-label="时间">${escapeHtml(a.time)}</td>
+          <td data-label="应变指标" class="${levelClass(a.type)}">${isDevice?'--':escapeHtml(a.strain)}</td>
+          <td data-label="等级"><span class="badge ${badgeClass(a.type)}">${escapeHtml(a.type)}</span></td>
+          <td data-label="规则">${escapeHtml(a.rule)}</td>
+          <td data-label="原因" class="reason-cell">${escapeHtml(a.reason)}</td>
+          <td data-label="状态">${escapeHtml(a.status)}</td>
+          <td data-label="操作">${a.status==='未处理'?`<button class="ack-btn" onclick="event.stopPropagation();acknowledgeAlarm(${a.id})">确认处理</button>`:'<span class="done-tag">已完成</span>'}</td>
         </tr>`;
       }).join('') || '<tr><td colspan="7" class="empty">暂无报警，系统运行正常</td></tr>';
 

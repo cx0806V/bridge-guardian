@@ -84,6 +84,14 @@
 </div>
 </div>
 
+<!-- 移动端底部导航（窄屏显示） -->
+<nav class="mobile-nav">
+  <a href="/dashboard"><span class="m-ico">🏠</span><span>首页</span></a>
+  <a href="/history"><span class="m-ico">📜</span><span>历史</span></a>
+  <a href="/settings" class="active"><span class="m-ico">⚙</span><span>设置</span></a>
+  <a href="/logout" class="danger"><span class="m-ico">⏻</span><span>退出</span></a>
+</nav>
+
 <script>
   const CSRF_TOKEN = {{ csrf_token|tojson }};
   const messageElement = document.getElementById('message');

@@ -287,11 +287,64 @@ td.lv-warn { color: var(--warn); } td.lv-alarm { color: var(--alarm); } td.lv-cr
 @media (max-width: 1280px) {
   .kpi { grid-template-columns: 1fr 1fr; }
 }
+
+/* 移动端底部导航栏（类小程序体验，仅窄屏显示） */
+.mobile-nav {
+  display: none;
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+  background: rgba(10, 24, 44, .97); border-top: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.mobile-nav a {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 2px; padding: 7px 0; min-height: 48px; font-size: 11px; color: var(--muted);
+  text-decoration: none;
+}
+.mobile-nav a .m-ico { font-size: 18px; line-height: 1; }
+.mobile-nav a.active { color: var(--accent); }
+.mobile-nav a.active .m-ico { text-shadow: 0 0 10px var(--accent-glow); }
+.mobile-nav a.danger { color: var(--crit); }
+
 @media (max-width: 760px) {
-  body { padding: 8px; }
+  body { padding: 8px 8px 78px !important; }
+  .mobile-nav { display: flex; }
+
+  /* 顶部导航链接隐藏（改用底部栏），状态徽章换行排列 */
+  .topbar { gap: 8px; padding: 8px 10px; }
+  .topbar .brand { flex-basis: 100%; }
+  .topbar .nav-link { display: none; }
+  .brand h1 { font-size: 16px; }
+  .brand .sub { letter-spacing: 1px; }
+
   .kpi, .charts { grid-template-columns: 1fr; }
-  .topbar { flex-direction: column; align-items: flex-start; }
-  .risk-value { font-size: 32px; }
-  .panel { overflow-x: auto; }
-  .brand h1 { font-size: 18px; }
+  .risk-value { font-size: 30px; }
+  #chart, #gauge { height: 220px; }
+
+  /* 表格 → 卡片（移动端） */
+  table, thead, tbody, tr, th, td { display: block; width: 100%; }
+  thead { display: none; }
+  table > tbody > tr {
+    border: 1px solid var(--line); border-radius: 8px; margin-bottom: 10px;
+    padding: 4px 12px; background: rgba(10, 25, 48, .4);
+  }
+  table > tbody > tr > td {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    padding: 8px 0; text-align: right; border-bottom: 1px dashed var(--line);
+  }
+  table > tbody > tr > td:last-child { border-bottom: none; }
+  table > tbody > tr > td::before {
+    content: attr(data-label); color: var(--muted); font-weight: 600;
+    white-space: nowrap; flex: 0 0 auto;
+  }
+  .reason-cell { max-width: none; text-align: right; word-break: break-word; }
+  table > tbody > tr > td.empty { justify-content: center; text-align: center; border-bottom: none; }
+  table > tbody > tr > td.empty::before { display: none; }
+
+  /* 触摸友好：按钮与场景按钮加大触点 */
+  .btn, .scn-btn { padding: 10px 16px; font-size: 13px; }
+  .scn-btn { min-height: 40px; }
+  .ack-btn { padding: 8px 14px; font-size: 13px; }
+  .scenario-current { margin-left: 0; width: 100%; }
 }
