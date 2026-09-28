@@ -5,259 +5,232 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>桥体卫士 — 桥梁结构健康监测大屏</title>
   <script src="/static/echarts.min.js"></script>
+  <link rel="stylesheet" href="/static/app.css">
   <style>
-    :root {
-      --bg:#081120; --panel:#0f2038; --border:#1c3a5e; --line:#21446b;
-      --text:#cfe8ff; --muted:#7a9cc0; --accent:#4fc3f7;
-      --ok:#4ade80; --warn:#fbbf24; --alarm:#fb923c; --crit:#ef4444; --offline:#64748b;
+    body { padding: 12px; position: relative; }
+    /* 桥梁线稿背景（低透明，数字孪生氛围） */
+    .bridge-bg {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: url('/static/bridge.svg') no-repeat center bottom / 100% auto;
+      opacity: .10;
     }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { background: radial-gradient(1200px 600px at 50% -10%, #0e2440 0%, var(--bg) 60%);
-      color:var(--text); font-family:"Microsoft YaHei","PingFang SC",sans-serif;
-      padding:12px; min-height:100vh; }
-    header { display:flex; justify-content:space-between; align-items:center;
-      border-bottom:1px solid var(--border); padding:6px 2px 12px; margin-bottom:12px; flex-wrap:wrap; gap:8px; }
-    header h1 { font-size:22px; color:var(--accent); letter-spacing:1px; }
-    header .nav { display:flex; align-items:center; gap:12px; }
-    header .nav a { color:var(--accent); text-decoration:none; font-size:14px; }
-    header .nav a:hover { text-decoration:underline; }
-    header .nav a.danger { color:var(--crit); }
-    .source-badge { padding:3px 12px; border-radius:20px; font-size:12px;
-      background:#123052; color:var(--accent); border:1px solid var(--line); }
-    .source-badge.serial { color:#ffd166; border-color:#5c4a1f; background:#2a2210; }
-
-    /* 模拟演示水印 + 场景切换面板 */
-    .demo-banner { text-align:center; font-size:13px; font-weight:700; letter-spacing:2px;
-      color:#ffd166; background:rgba(251,191,36,.08); border:1px dashed rgba(251,191,36,.5);
-      padding:6px 12px; border-radius:8px; margin-bottom:10px; }
-    .scenario-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
-      background:var(--panel); border:1px solid var(--border); border-radius:10px;
-      padding:10px 14px; margin-bottom:12px; }
-    .scenario-title { font-size:13px; color:var(--muted); margin-right:4px; }
-    .scn-btn { border:1px solid var(--line); background:#123052; color:var(--accent);
-      border-radius:6px; padding:5px 12px; cursor:pointer; font-size:12px; }
-    .scn-btn:hover { background:#1a3f6e; border-color:var(--accent); }
-    .scn-btn.active { background:#1e88e5; color:#fff; border-color:#1e88e5; }
-    .scenario-current { margin-left:auto; font-size:12px; color:var(--muted); }
-
-    /* KPI 行 */
-    .kpi { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:12px; }
-    .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px; position:relative; }
-    .panel h3 { font-size:14px; color:#8fd8ff; margin-bottom:10px; font-weight:600; display:flex; align-items:center; gap:6px; }
-    .panel h3 .dot { width:8px; height:8px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px var(--accent); }
-    .full { grid-column:1 / -1; }
-
-    /* 风险卡（整卡随风险变色） */
-    .risk-card { display:flex; flex-direction:column; align-items:center; justify-content:center;
-      min-height:130px; border-radius:10px; border:1px solid var(--line); padding:10px;
-      transition:background .4s, border-color .4s; }
-    .risk-label { font-size:16px; letter-spacing:3px; font-weight:800; }
-    .risk-value { font-size:42px; font-weight:800; line-height:1.1; margin:4px 0; font-variant-numeric:tabular-nums; }
-    .risk-unit { font-size:14px; font-weight:600; margin-left:6px; opacity:.85; }
-    .risk-sub { font-size:13px; color:var(--muted); display:flex; gap:14px; }
-    .risk-normal { color:var(--ok); background:rgba(74,222,128,.08); border-color:rgba(74,222,128,.35); }
-    .risk-warn   { color:var(--warn); background:rgba(251,191,36,.08); border-color:rgba(251,191,36,.35); }
-    .risk-alarm  { color:var(--alarm); background:rgba(251,146,60,.08); border-color:rgba(251,146,60,.4); }
-    .risk-crit   { color:var(--crit); background:rgba(239,68,68,.10); border-color:rgba(239,68,68,.5); animation:pulse 1.2s infinite; }
-    @keyframes pulse { 0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.4)} 50%{box-shadow:0 0 0 8px rgba(239,68,68,0)} }
-    .rate-up { color:var(--crit); } .rate-down { color:var(--ok); } .rate-flat { color:var(--muted); }
-
-    /* 设备健康度 */
-    .health-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px dashed var(--line); font-size:13px; }
-    .health-row:last-child { border-bottom:none; }
-    .health-row .k { color:var(--muted); } .health-row .v { color:var(--text); }
-    .state-online { color:var(--ok); } .state-offline { color:var(--crit); } .state-unknown { color:var(--offline); }
-
-    /* 待处置报警 */
-    .pending-num { font-size:52px; font-weight:800; text-align:center; line-height:1; }
-    .pending-num.crit { color:var(--crit); } .pending-num.ok { color:var(--ok); }
-    .pending-label { text-align:center; color:var(--muted); font-size:13px; margin-top:6px; }
-    .stat-grid { display:flex; gap:8px; margin-top:10px; }
-    .stat-item { flex:1; text-align:center; padding:8px 4px; border-radius:8px; background:rgba(10,25,48,.6); border:1px solid var(--line); }
-    .stat-item .n { font-size:20px; font-weight:700; } .stat-item .t { font-size:11px; color:var(--muted); margin-top:2px; }
-    .c-warn { color:var(--warn); } .c-alarm { color:var(--alarm); } .c-crit { color:var(--crit); }
-
-    /* 运行状态 */
-    .run-row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px dashed var(--line); font-size:13px; }
-    .run-row:last-child { border-bottom:none; }
-    .run-row .k { color:var(--muted); } .run-row .v { color:var(--text); font-variant-numeric:tabular-nums; }
-
-    /* 图表 */
-    .charts { display:grid; grid-template-columns:2fr 1fr; gap:12px; margin-bottom:12px; }
-    #chart { width:100%; height:250px; } #gauge { width:100%; height:250px; }
-
-    table { width:100%; border-collapse:collapse; font-size:13px; }
-    th,td { padding:6px; border-bottom:1px solid var(--line); text-align:center; }
-    th { color:#8fd8ff; font-weight:600; }
-    td.lv-warn { color:var(--warn); } td.lv-alarm { color:var(--alarm); } td.lv-crit { color:var(--crit); }
-    .reason-cell { text-align:left; color:var(--muted); max-width:260px; }
-    .empty { text-align:center; color:var(--muted); padding:24px 0 !important; }
-
-    .btn { border:0; border-radius:6px; padding:5px 12px; cursor:pointer; color:#fff; font-size:12px; }
-    .btn-blue { background:#1e88e5; } .btn-blue:hover { background:#1565c0; }
-    .btn-red { background:#e53935; } .btn-red:hover { background:#c62828; }
-    .ack-btn { border:0; border-radius:4px; padding:3px 8px; background:#1e88e5; color:#fff; cursor:pointer; font-size:12px; }
-    .ack-btn:hover { background:#1565c0; }
-    .conn { font-size:12px; color:var(--muted); }
-    .conn.error { color:var(--crit); }
-
-    @media (max-width:1100px) { .kpi { grid-template-columns:1fr 1fr; } }
-    @media (max-width:680px) {
-      .kpi, .charts { grid-template-columns:1fr; }
-      header { flex-direction:column; align-items:flex-start; }
-      .risk-value { font-size:32px; }
-      .panel { overflow-x:auto; }
-    }
+    .page { position: relative; z-index: 1; }
+    .full { grid-column: 1 / -1; }
+    /* 报警行可点击聚焦 */
+    #alarmTable tr { cursor: pointer; transition: background .12s; }
+    #alarmTable tr:hover { background: rgba(63,208,255,.05); }
+    .alarm-detail .d-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
+    .d-meta .tag { padding: 3px 10px; border-radius: 6px; font-size: 12px; background: rgba(18,48,82,.6); border: 1px solid var(--line); color: var(--text); }
+    .d-meta .tag b { color: var(--accent); }
+    .d-actions { margin-top: 10px; display: flex; gap: 8px; }
   </style>
 </head>
 <body>
 
-<header>
-  <h1>🌉 桥体卫士 · 桥梁结构健康监测</h1>
-  <div class="nav">
-    <span class="source-badge" id="sourceBadge">数据源：--</span>
-    <span class="conn">运行 <span id="uptimeShow">--</span></span>
-    <a href="/history">📜 历史记录</a>
-    <a href="/settings">⚙ 设置</a>
-    <a class="danger" href="/logout">退出</a>
-  </div>
-</header>
+<div class="bridge-bg"></div>
+<div class="page">
 
-<!-- 模拟演示水印（仅模拟模式显示，明确标注，不伪装真实硬件） -->
-<div class="demo-banner" id="demoBanner" style="display:none">
-  模拟演示 · 非真实硬件数据
-</div>
-
-<!-- 模拟场景切换面板（仅模拟模式显示） -->
-<div class="scenario-bar" id="scenarioBar" style="display:none">
-  <span class="scenario-title">模拟场景</span>
-  <button class="scn-btn" data-scn="normal" onclick="setScenario('normal')">正常运行</button>
-  <button class="scn-btn" data-scn="warn" onclick="setScenario('warn')">预警</button>
-  <button class="scn-btn" data-scn="alarm" onclick="setScenario('alarm')">报警</button>
-  <button class="scn-btn" data-scn="critical" onclick="setScenario('critical')">严重报警</button>
-  <button class="scn-btn" data-scn="offline" onclick="setScenario('offline')">设备离线</button>
-  <button class="scn-btn" data-scn="recover" onclick="setScenario('recover')">设备恢复</button>
-  <span class="scenario-current" id="scenarioCurrent">当前：正常运行</span>
-</div>
-
-<!-- 顶部 KPI 行 -->
-<div class="kpi">
-
-  <!-- 风险等级 + 当前值 -->
-  <div class="panel">
-    <h3><span class="dot"></span>当前风险</h3>
-    <div class="risk-card risk-normal" id="riskCard">
-      <div class="risk-label" id="riskLabel">--</div>
-      <div class="risk-value"><span id="strainNum">--</span><span class="risk-unit" id="strainUnit">{{ unit }}</span></div>
-      <div class="risk-sub">
-        <span>阈值 <b id="thresholdShow">{{ threshold }}</b></span>
-        <span>变化率 <b id="rateShow">--</b></span>
+  <!-- ============ 顶部系统状态条 ============ -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#3fd0ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 18h18"/><path d="M3 18c2.5-4 6-6 9-6s6.5 2 9 6"/><path d="M12 12V6"/><path d="M6 6h12"/>
+        </svg>
+      </span>
+      <div>
+        <h1>桥体卫士 · 桥梁结构健康监测</h1>
+        <div class="sub">BRIDGE STRUCTURAL HEALTH MONITORING</div>
       </div>
     </div>
+    <span class="source-badge" id="sourceBadge">数据源：--</span>
+    <span class="conn" id="connLight">● 运行 <span id="uptimeShow">--</span></span>
+    <a class="nav-link" href="/history">历史记录</a>
+    <a class="nav-link" href="/settings">设置</a>
+    <a class="nav-link danger" href="/logout">退出</a>
+  </header>
+
+  <!-- 模拟演示水印（仅模拟模式显示，明确标注，不伪装真实硬件） -->
+  <div class="demo-banner" id="demoBanner" style="display:none">
+    <span class="tag">模拟</span>
+    模拟演示 · 非真实硬件数据 · 缩尺模型受载变化模拟
   </div>
 
-  <!-- 设备健康度 -->
-  <div class="panel">
-    <h3><span class="dot"></span>设备健康度</h3>
-    <div class="health-row"><span class="k">设备标识</span><span class="v" id="healthDevice">--</span></div>
-    <div class="health-row"><span class="k">数据来源</span><span class="v" id="healthSource">--</span></div>
-    <div class="health-row"><span class="k">连接状态</span><span class="v" id="healthState">--</span></div>
-    <div class="health-row"><span class="k">最近心跳</span><span class="v" id="healthHeartbeat">--</span></div>
-    <div class="health-row"><span class="k">最近异常</span><span class="v" id="healthError">无</span></div>
+  <!-- 模拟场景切换面板（仅模拟模式显示） -->
+  <div class="scenario-bar" id="scenarioBar" style="display:none">
+    <span class="scenario-title">模拟场景</span>
+    <button class="scn-btn" data-scn="normal" onclick="setScenario('normal')">正常运行</button>
+    <button class="scn-btn" data-scn="warn" onclick="setScenario('warn')">预警</button>
+    <button class="scn-btn" data-scn="alarm" onclick="setScenario('alarm')">报警</button>
+    <button class="scn-btn" data-scn="critical" onclick="setScenario('critical')">严重报警</button>
+    <button class="scn-btn offline-btn" data-scn="offline" onclick="setScenario('offline')">设备离线</button>
+    <button class="scn-btn" data-scn="recover" onclick="setScenario('recover')">设备恢复</button>
+    <span class="scenario-current">当前：<b id="scenarioCurrent">正常运行</b></span>
   </div>
 
-  <!-- 待处置报警 -->
-  <div class="panel">
-    <h3><span class="dot"></span>待处置报警</h3>
-    <div class="pending-num ok" id="pendingNum">0</div>
-    <div class="pending-label">未处理报警条数</div>
-    <div class="stat-grid">
-      <div class="stat-item"><div class="n c-warn" id="cntWarn">0</div><div class="t">预警</div></div>
-      <div class="stat-item"><div class="n c-alarm" id="cntAlarm">0</div><div class="t">报警</div></div>
-      <div class="stat-item"><div class="n c-crit" id="cntCrit">0</div><div class="t">严重报警</div></div>
+  <!-- ============ 核心 KPI 行 ============ -->
+  <div class="kpi">
+
+    <!-- 当前风险 -->
+    <div class="panel">
+      <span class="corner tl"></span><span class="corner br"></span>
+      <h3>当前风险</h3>
+      <div class="risk-card risk-normal" id="riskCard">
+        <div class="risk-label" id="riskLabel"><span class="state-icon">●</span><span>--</span></div>
+        <div class="risk-value"><span id="strainNum">--</span><span class="risk-unit" id="strainUnit">{{ unit }}</span></div>
+        <div class="risk-sub">
+          <span>阈值 <b id="thresholdShow">{{ threshold }}</b></span>
+          <span>变化率 <b id="rateShow">--</b></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 设备健康度 -->
+    <div class="panel">
+      <span class="corner tl"></span><span class="corner br"></span>
+      <h3>设备健康度</h3>
+      <div class="kv-row"><span class="k">设备标识</span><span class="v" id="healthDevice">--</span></div>
+      <div class="kv-row"><span class="k">数据来源</span><span class="v" id="healthSource">--</span></div>
+      <div class="kv-row"><span class="k">连接状态</span><span class="v"><span class="health-state state-unknown" id="healthState">--</span></span></div>
+      <div class="kv-row"><span class="k">最近心跳</span><span class="v" id="healthHeartbeat">--</span></div>
+      <div class="kv-row"><span class="k">最近异常</span><span class="v" id="healthError">无</span></div>
+    </div>
+
+    <!-- 待处置报警 -->
+    <div class="panel">
+      <span class="corner tl"></span><span class="corner br"></span>
+      <h3>待处置报警</h3>
+      <div class="pending-num ok" id="pendingNum">0</div>
+      <div class="pending-label">未处理报警条数</div>
+      <div class="stat-grid">
+        <div class="stat-item"><div class="n c-warn" id="cntWarn">0</div><div class="t">预警</div></div>
+        <div class="stat-item"><div class="n c-alarm" id="cntAlarm">0</div><div class="t">报警</div></div>
+        <div class="stat-item"><div class="n c-crit" id="cntCrit">0</div><div class="t">严重报警</div></div>
+      </div>
+    </div>
+
+    <!-- 系统运行 -->
+    <div class="panel">
+      <span class="corner tl"></span><span class="corner br"></span>
+      <h3>系统运行</h3>
+      <div class="kv-row"><span class="k">运行时长</span><span class="v num" id="uptimeNum">--</span></div>
+      <div class="kv-row"><span class="k">采集周期</span><span class="v num" id="intervalShow">-- 秒</span></div>
+      <div class="kv-row"><span class="k">累计采样</span><span class="v num" id="sampleCount">0 次</span></div>
+      <div class="kv-row"><span class="k">最后采样</span><span class="v num" id="lastSampleTime">--</span></div>
+      <div class="kv-row"><span class="k">数据源状态</span><span class="v" id="sensorStatus">--</span></div>
+    </div>
+
+  </div>
+
+  <!-- ============ 图表行 ============ -->
+  <div class="charts">
+    <div class="panel">
+      <span class="corner tl"></span><span class="corner br"></span>
+      <h3>桥梁受载趋势 <span class="conn idle" id="chartConn" style="margin-left:6px"></span></h3>
+      <div id="chart"></div>
+    </div>
+    <div class="panel">
+      <span class="corner tl"></span><span class="corner br"></span>
+      <h3>阈值仪表</h3>
+      <div id="gauge"></div>
     </div>
   </div>
 
-  <!-- 运行状态 -->
-  <div class="panel">
-    <h3><span class="dot"></span>系统运行</h3>
-    <div class="run-row"><span class="k">运行时长</span><span class="v" id="uptimeNum">--</span></div>
-    <div class="run-row"><span class="k">采集周期</span><span class="v" id="intervalShow">-- 秒</span></div>
-    <div class="run-row"><span class="k">累计采样</span><span class="v" id="sampleCount">0 次</span></div>
-    <div class="run-row"><span class="k">最后采样</span><span class="v" id="lastSampleTime">--</span></div>
-    <div class="run-row"><span class="k">数据源状态</span><span class="v" id="sensorStatus">--</span></div>
+  <!-- ============ 报警处置队列 ============ -->
+  <div class="panel full">
+    <span class="corner tl"></span><span class="corner br"></span>
+    <h3>报警处置队列
+      <span style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="clearData()">清除数据</button>
+        <button class="btn btn-red" onclick="clearAlarms()">清除报警</button>
+      </span>
+    </h3>
+    <table>
+      <thead><tr>
+        <th>时间</th><th>应变指标</th><th>等级</th><th>规则</th><th>原因</th><th>状态</th><th>操作</th>
+      </tr></thead>
+      <tbody id="alarmTable"></tbody>
+    </table>
+    <!-- 报警详情（点击行聚焦原因/规则/触发值/状态） -->
+    <div class="alarm-detail" id="alarmDetail"></div>
+    <p class="conn" id="connectionStatus" style="margin-top:8px">● 数据连接正常</p>
   </div>
 
-</div>
-
-<!-- 图表行 -->
-<div class="charts">
-  <div class="panel">
-    <h3><span class="dot"></span>实时应变趋势</h3>
-    <div id="chart"></div>
-  </div>
-  <div class="panel">
-    <h3><span class="dot"></span>阈值仪表</h3>
-    <div id="gauge"></div>
-  </div>
-</div>
-
-<!-- 报警处置队列 -->
-<div class="panel full">
-  <h3><span class="dot"></span>报警处置队列
-    <span style="margin-left:auto;display:flex;gap:8px">
-      <button class="btn btn-blue" onclick="clearData()">🧹 清除数据</button>
-      <button class="btn btn-red" onclick="clearAlarms()">🗑 清除报警</button>
-    </span>
-  </h3>
-  <table>
-    <thead><tr>
-      <th>时间</th><th>应变指标</th><th>等级</th><th>规则</th><th>原因</th><th>状态</th><th>操作</th>
-    </tr></thead>
-    <tbody id="alarmTable"></tbody>
-  </table>
-  <p class="conn" id="connectionStatus" style="margin-top:6px">● 数据连接正常</p>
 </div>
 
 <script>
   const CSRF_TOKEN = {{ csrf_token|tojson }};
   const UNIT = {{ unit|tojson }};
+  const INITIAL_THRESHOLD = {{ threshold }};
   const gaugeChart = echarts.init(document.getElementById('gauge'));
   const lineChart = echarts.init(document.getElementById('chart'));
+  let selectedAlarmId = null;   // 当前聚焦的报警 id
 
   gaugeChart.setOption({
     series: [{
-      type:'gauge', min:0, max:200,
-      axisLine:{ lineStyle:{ width:12, color:[[0.6,'#4ade80'],[0.75,'#fbbf24'],[0.9,'#fb923c'],[1,'#ef4444']] } },
-      pointer:{ itemStyle:{ color:'#ffb74d' } },
-      detail:{ formatter:'{value}', color:'#cfe8ff', fontSize:16 },
-      data:[{ value:0 }]
+      type: 'gauge', min: 0, max: 200, radius: '92%', center: ['50%', '58%'],
+      startAngle: 200, endAngle: -20,
+      axisLine: { lineStyle: { width: 14, color: [[0.6,'#34d399'],[0.75,'#fbbf24'],[0.9,'#fb923c'],[1,'#f43f5e']] } },
+      pointer: { itemStyle: { color: '#ffb74d' }, width: 5 },
+      axisTick: { distance: -22, splitNumber: 5, lineStyle: { color: '#1c3a5e', width: 1 } },
+      splitLine: { distance: -24, length: 10, lineStyle: { color: '#21446b', width: 2 } },
+      axisLabel: { distance: -4, color: '#7a9cc0', fontSize: 10 },
+      detail: { formatter: '{value}', color: '#eaf6ff', fontSize: 22, offsetCenter: [0, '40%'],
+        fontFamily: 'Microsoft YaHei' },
+      title: { offsetCenter: [0, '72%'], color: '#7a9cc0', fontSize: 12 },
+      data: [{ value: 0, name: UNIT }]
     }]
   });
 
   lineChart.setOption({
-    xAxis:{ type:'category', data:[], axisLabel:{ color:'#7a9cc0' } },
-    yAxis:{ type:'value', axisLabel:{ color:'#7a9cc0' } },
-    tooltip:{ trigger:'axis' },
-    series:[{
-      name:'应变指标', type:'line', data:[], smooth:true, showSymbol:false,
-      lineStyle:{ color:'#4fc3f7', width:2 }, areaStyle:{ color:'rgba(79,195,247,0.12)' },
-      markLine:{
-        data:[{ yAxis:{{ threshold }}, name:'阈值' }],
-        lineStyle:{ color:'#ef4444', type:'dashed' },
-        label:{ color:'#ff6b6b', formatter:'阈值 {{ threshold }}μ' }
+    grid: { left: 44, right: 16, top: 30, bottom: 34 },
+    xAxis: { type: 'category', data: [], boundaryGap: false,
+      axisLine: { lineStyle: { color: '#21446b' } },
+      axisLabel: { color: '#7a9cc0', fontSize: 10 } },
+    yAxis: { type: 'value', scale: true,
+      axisLine: { lineStyle: { color: '#21446b' } },
+      splitLine: { lineStyle: { color: 'rgba(33,68,107,.35)' } },
+      axisLabel: { color: '#7a9cc0', fontSize: 10 } },
+    tooltip: { trigger: 'axis', backgroundColor: 'rgba(13,32,56,.95)',
+      borderColor: '#1c3a5e', textStyle: { color: '#cfe8ff', fontSize: 12 },
+      axisPointer: { lineStyle: { color: '#3fd0ff' } },
+      formatter: function(params){
+        const p = params[0]; if(!p) return '';
+        const t = p.axisValue;
+        const v = Number(p.data).toFixed(2);
+        return '<div style="font-weight:600;margin-bottom:4px">'+t+'</div>'
+             + '<span style="color:#3fd0ff">应变指标</span>：<b>'+v+'</b> '+UNIT;
+      } },
+    dataZoom: [
+      { type: 'inside', start: 0, end: 100 },
+      { type: 'slider', height: 14, bottom: 6, borderColor: '#1c3a5e',
+        backgroundColor: 'rgba(13,32,56,.6)', fillerColor: 'rgba(63,208,255,.15)',
+        handleStyle: { color: '#3fd0ff' }, textStyle: { color: '#7a9cc0', fontSize: 10 } }
+    ],
+    series: [{
+      name: '应变指标', type: 'line', data: [], smooth: true, showSymbol: false,
+      lineStyle: { color: '#3fd0ff', width: 2 },
+      areaStyle: { color: 'rgba(63,208,255,0.12)' },
+      markLine: {
+        symbol: 'none', silent: true,
+        data: [{ yAxis: INITIAL_THRESHOLD, name: '阈值' }],
+        lineStyle: { color: '#f43f5e', type: 'dashed', width: 1.5 },
+        label: { color: '#f43f5e', formatter: '阈值 ' + INITIAL_THRESHOLD, position: 'insideEndTop', fontSize: 10 }
       }
     }]
   });
 
   function escapeHtml(v){ return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function levelClass(l){ return l==='严重报警'?'lv-crit':(l==='报警'?'lv-alarm':'lv-warn'); }
+  function levelClass(l){ return l==='严重报警'?'lv-crit':(l==='报警'?'lv-alarm':(l==='预警'?'lv-warn':'')); }
+  function badgeClass(l){ return l==='严重报警'?'crit':(l==='报警'?'alarm':(l==='预警'?'warn':'info')); }
 
-  function riskOf(strain, threshold){
-    if (strain <= threshold) return { label:'● 安全', cls:'risk-normal' };
-    if (strain <= threshold*1.1) return { label:'▲ 预警', cls:'risk-warn' };
-    if (strain <= threshold*1.2) return { label:'■ 报警', cls:'risk-alarm' };
-    return { label:'⛔ 严重报警', cls:'risk-crit' };
+  // 风险分级：正常/预警/报警/严重报警；设备离线用单独状态
+  function riskOf(strain, threshold, isOnline){
+    if (!isOnline) return { label:'设备离线', icon:'⛔', cls:'risk-offline' };
+    if (strain <= threshold) return { label:'安全', icon:'●', cls:'risk-normal' };
+    if (strain <= threshold*1.1) return { label:'预警', icon:'▲', cls:'risk-warn' };
+    if (strain <= threshold*1.2) return { label:'报警', icon:'■', cls:'risk-alarm' };
+    return { label:'严重报警', icon:'⛔', cls:'risk-crit' };
   }
 
   function fmtUptime(sec){
@@ -268,7 +241,44 @@
     return h + ':' + m + ':' + s;
   }
 
-  function setConn(ok, msg){ const el=document.getElementById('connectionStatus'); el.className = ok?'conn':'conn error'; el.textContent = msg; }
+  function setConn(ok, msg){
+    const el = document.getElementById('connectionStatus');
+    el.className = ok ? 'conn' : 'conn error';
+    el.textContent = msg;
+    const light = document.getElementById('connLight');
+    light.className = ok ? 'conn' : 'conn error';
+  }
+
+  function selectAlarm(id){
+    selectedAlarmId = (selectedAlarmId === id) ? null : id;  // 再点一次折叠
+    renderAlarmDetail();
+  }
+
+  function renderAlarmDetail(){
+    const box = document.getElementById('alarmDetail');
+    if (selectedAlarmId == null) { box.className = 'alarm-detail'; box.innerHTML=''; return; }
+    // 从当前缓存找（refresh 里已存 latestAlarms）
+    const a = (window._alarms||[]).find(x => x.id === selectedAlarmId);
+    if (!a) { box.className='alarm-detail'; box.innerHTML=''; return; }
+    box.className = 'alarm-detail open';
+    const isDevice = (a.rule==='设备离线' || a.rule==='设备恢复');
+    const strainText = isDevice ? '—（设备事件，无应变值）' : escapeHtml(a.strain) + ' ' + UNIT;
+    box.innerHTML =
+      '<div class="d-title">报警 #' + a.id + ' · ' + escapeHtml(a.rule) + '</div>' +
+      '<div class="d-reason">' + escapeHtml(a.reason) + '</div>' +
+      '<div class="d-meta">' +
+        '<span class="tag">触发规则：<b>' + escapeHtml(a.rule) + '</b></span>' +
+        '<span class="tag">触发值：<b>' + strainText + '</b></span>' +
+        '<span class="tag">触发时间：<b>' + escapeHtml(a.time) + '</b></span>' +
+        '<span class="tag">处置状态：<b>' + escapeHtml(a.status) + '</b></span>' +
+      '</div>' +
+      '<div class="d-actions">' +
+        (a.status === '未处理'
+          ? '<button class="btn btn-blue" onclick="acknowledgeAlarm('+a.id+')">确认处理</button>'
+          : '<span class="done-tag" style="align-self:center">✓ 该报警已处理</span>') +
+        '<button class="btn btn-ghost" onclick="selectAlarm('+a.id+')">收起</button>' +
+      '</div>';
+  }
 
   async function refresh(){
     try {
@@ -276,16 +286,21 @@
       if (r.status===401){ window.location.href='/login'; return; }
       if (!r.ok) throw new Error(`请求失败：${r.status}`);
       const d = await r.json();
+      window._alarms = d.alarms || [];
 
-      // 风险卡（整卡变色）
-      const risk = riskOf(d.strain, d.threshold);
+      // ---- 设备在线判定（串口离线 / 模拟离线）----
+      const h = d.device_health || {};
+      const isOnline = h.state !== 'offline';
+
+      // ---- 风险卡 ----
+      const risk = riskOf(d.strain, d.threshold, isOnline);
       const card = document.getElementById('riskCard');
       card.className = 'risk-card ' + risk.cls;
-      document.getElementById('riskLabel').textContent = risk.label;
-      document.getElementById('strainNum').textContent = d.strain.toFixed(2);
+      document.getElementById('riskLabel').innerHTML =
+        '<span class="state-icon">'+risk.icon+'</span><span>'+risk.label+'</span>';
+      document.getElementById('strainNum').textContent = (isOnline && d.strain != null) ? d.strain.toFixed(2) : '--';
       document.getElementById('strainUnit').textContent = UNIT;
       document.getElementById('thresholdShow').textContent = d.threshold;
-      // 变化率
       const rateEl = document.getElementById('rateShow');
       if (d.rate == null) { rateEl.textContent = '--'; rateEl.className='rate-flat'; }
       else {
@@ -293,32 +308,32 @@
         rateEl.className = d.rate>0 ? 'rate-up' : (d.rate<0 ? 'rate-down' : 'rate-flat');
       }
 
-      // 设备健康度
-      const h = d.device_health || {};
+      // ---- 设备健康度 ----
       document.getElementById('healthDevice').textContent = d.device_id || '--';
-      document.getElementById('healthSource').textContent = d.source==='serial' ? '串口(真实设备)' : '模拟器';
+      document.getElementById('healthSource').textContent = d.source==='serial' ? '串口（真实设备）' : '模拟器';
       const st = document.getElementById('healthState');
       st.textContent = h.text || d.sensor_status || '--';
-      st.className = 'v ' + (h.state==='online' ? 'state-online' : (h.state==='offline' ? 'state-offline' : 'state-unknown'));
+      st.className = 'health-state ' + (h.state==='online' ? 'state-online' : (h.state==='offline' ? 'state-offline' : 'state-unknown'));
       document.getElementById('healthHeartbeat').textContent = h.last_heartbeat || '--';
       document.getElementById('healthError').textContent = h.last_error || '无';
-      document.getElementById('sourceBadge').textContent = '数据源：' + (d.source==='serial' ? '串口(真实)' : '模拟');
+      document.getElementById('sourceBadge').textContent = '数据源：' + (d.source==='serial' ? '串口（真实）' : '模拟');
       document.getElementById('sourceBadge').className = 'source-badge' + (d.source==='serial' ? ' serial' : '');
 
-      // 模拟模式：显示水印 + 场景面板；串口模式隐藏（真实数据不做场景切换）
+      // ---- 模拟模式：水印 + 场景面板常显；串口模式隐藏 ----
       const isSim = d.source === 'sim';
-      document.getElementById('demoBanner').style.display = isSim ? 'block' : 'none';
+      document.getElementById('demoBanner').style.display = isSim ? 'flex' : 'none';
       document.getElementById('scenarioBar').style.display = isSim ? 'flex' : 'none';
       if (isSim) {
         const scn = d.scenario || 'normal';
         const labelMap = { normal:'正常运行', warn:'预警', alarm:'报警', critical:'严重报警', offline:'设备离线', recover:'设备恢复' };
-        document.getElementById('scenarioCurrent').textContent = '当前：' + (labelMap[scn] || scn);
+        document.getElementById('scenarioCurrent').textContent = labelMap[scn] || scn;
         document.querySelectorAll('.scn-btn').forEach(b => {
-          b.className = 'scn-btn' + (b.dataset.scn === scn ? ' active' : '');
+          b.className = 'scn-btn' + (b.dataset.scn === 'offline' ? ' offline-btn' : '')
+            + (b.dataset.scn === scn ? ' active' : '');
         });
       }
 
-      // 待处置报警
+      // ---- 待处置报警 ----
       const alarms = d.alarms || [];
       const pending = alarms.filter(a => a.status === '未处理').length;
       const pn = document.getElementById('pendingNum');
@@ -328,7 +343,7 @@
       document.getElementById('cntAlarm').textContent = alarms.filter(a=>a.type==='报警').length;
       document.getElementById('cntCrit').textContent = alarms.filter(a=>a.type==='严重报警').length;
 
-      // 运行状态
+      // ---- 运行状态 ----
       document.getElementById('uptimeNum').textContent = fmtUptime(d.uptime||0);
       document.getElementById('uptimeShow').textContent = fmtUptime(d.uptime||0);
       document.getElementById('intervalShow').textContent = d.interval + ' 秒';
@@ -336,34 +351,49 @@
       document.getElementById('lastSampleTime').textContent = d.last_sample_time;
       document.getElementById('sensorStatus').textContent = d.sensor_status;
 
-      // 图表
-      gaugeChart.setOption({ series:[{ data:[{ value:d.strain }] }] });
+      // ---- 图表 ----
+      // 离线时仪表显示 --（不伪造读数），指针停在当前值位置
+      gaugeChart.setOption({ series:[{ data:[{ value: (isOnline && d.strain!=null) ? d.strain : 0,
+        name: UNIT }], detail: { formatter: (isOnline && d.strain!=null) ? '{value}' : '--' } }] });
+      const times = d.history.map(i => i.time);
+      const vals = d.history.map(i => i.strain);
       lineChart.setOption({
-        xAxis:{ data:d.history.map(i=>i.time) },
-        series:[{ data:d.history.map(i=>i.strain), markLine:{ data:[{ yAxis:d.threshold, name:'阈值' }], label:{ formatter:`阈值 ${d.threshold}μ` } } }]
+        xAxis: { data: times },
+        series: [{ data: vals, markLine: { data: [{ yAxis: d.threshold, name:'阈值' }],
+          label: { formatter: '阈值 ' + d.threshold } } }]
       });
+      // 图表空数据提示
+      const cc = document.getElementById('chartConn');
+      cc.className = 'conn idle';
+      cc.textContent = vals.length === 0 ? '等待采样数据…' : '';
 
-      // 报警队列
-      document.getElementById('alarmTable').innerHTML = alarms.slice().reverse().map(a=>
-        `<tr>
+      // ---- 报警队列（行可点击聚焦详情）----
+      const tbody = document.getElementById('alarmTable');
+      tbody.innerHTML = alarms.slice().reverse().map(a => {
+        const isDevice = (a.rule==='设备离线' || a.rule==='设备恢复');
+        return `<tr onclick="selectAlarm(${a.id})">
           <td>${escapeHtml(a.time)}</td>
-          <td class="${levelClass(a.type)}">${(a.rule==='设备离线'||a.rule==='设备恢复')?'--':escapeHtml(a.strain)}</td>
-          <td class="${levelClass(a.type)}">${escapeHtml(a.type)}</td>
+          <td class="${levelClass(a.type)}">${isDevice?'--':escapeHtml(a.strain)}</td>
+          <td><span class="badge ${badgeClass(a.type)}">${escapeHtml(a.type)}</span></td>
           <td>${escapeHtml(a.rule)}</td>
           <td class="reason-cell">${escapeHtml(a.reason)}</td>
           <td>${escapeHtml(a.status)}</td>
-          <td>${a.status==='未处理'?`<button class="ack-btn" onclick="acknowledgeAlarm(${a.id})">确认处理</button>`:'已完成'}</td>
-        </tr>`).join('') || '<tr><td colspan="7" class="empty">暂无报警，系统运行正常</td></tr>';
+          <td>${a.status==='未处理'?`<button class="ack-btn" onclick="event.stopPropagation();acknowledgeAlarm(${a.id})">确认处理</button>`:'<span class="done-tag">已完成</span>'}</td>
+        </tr>`;
+      }).join('') || '<tr><td colspan="7" class="empty">暂无报警，系统运行正常</td></tr>';
 
+      renderAlarmDetail();
       setConn(true, '● 数据连接正常');
     } catch(e){
       console.error(e);
       setConn(false, '⚠ 数据连接失败，请检查服务是否运行');
+      document.getElementById('chartConn').className = 'conn error';
+      document.getElementById('chartConn').textContent = '接口断开';
     }
   }
 
   async function clearAlarms(){ if(!confirm('确定清除当前报警和历史报警记录吗？'))return;
-    try{ const r=await fetch('/api/clear_alarms',{method:'POST',headers:{'X-CSRF-Token':CSRF_TOKEN}}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; refresh(); }catch(e){ setConn(false,'⚠ 清除报警失败'); } }
+    try{ const r=await fetch('/api/clear_alarms',{method:'POST',headers:{'X-CSRF-Token':CSRF_TOKEN}}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; selectedAlarmId=null; refresh(); }catch(e){ setConn(false,'⚠ 清除报警失败'); } }
   async function acknowledgeAlarm(id){ try{ const r=await fetch(`/api/acknowledge_alarm/${id}`,{method:'POST',headers:{'X-CSRF-Token':CSRF_TOKEN}}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; refresh(); }catch(e){ setConn(false,'⚠ 确认报警失败'); } }
   async function clearData(){ if(!confirm('确定清除当前数据和历史数据记录吗？'))return;
     try{ const r=await fetch('/api/clear_data',{method:'POST',headers:{'X-CSRF-Token':CSRF_TOKEN}}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; refresh(); }catch(e){ setConn(false,'⚠ 清除数据失败'); } }

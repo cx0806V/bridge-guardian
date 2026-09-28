@@ -3,35 +3,97 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>登录 - 桥体卫士</title>
+  <title>登录 · 桥体卫士 — 桥梁结构健康监测</title>
+  <link rel="stylesheet" href="/static/app.css">
   <style>
-    :root { --bg:#081120; --panel:#0f2038; --border:#1c3a5e; --text:#cfe8ff; --muted:#7a9cc0; --accent:#4fc3f7; --crit:#ef4444; }
-    * { margin:0; padding:0; box-sizing:border-box; }
-    body { background: radial-gradient(1000px 500px at 50% -10%, #0e2440 0%, var(--bg) 60%);
-      font-family:"Microsoft YaHei","PingFang SC",sans-serif; display:flex; justify-content:center; align-items:center; min-height:100vh; }
-    .card { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:40px; width:360px; }
-    h1 { color:var(--accent); font-size:22px; text-align:center; letter-spacing:1px; }
-    .sub { color:var(--muted); font-size:13px; text-align:center; margin:8px 0 24px; line-height:1.6; }
-    label { color:#8fd8ff; font-size:14px; display:block; margin:12px 0 4px; }
-    input { width:100%; padding:10px; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); font-size:14px; }
-    button { width:100%; margin-top:20px; padding:10px; background:#1e88e5; color:#fff; border:none; border-radius:6px; font-size:15px; cursor:pointer; }
-    button:hover { background:#1565c0; }
-    .error { color:var(--crit); font-size:13px; text-align:center; margin-top:12px; }
+    body {
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px; position: relative; overflow: hidden;
+    }
+    /* 桥梁线稿背景（低透明，工业数字孪生氛围） */
+    .bridge-bg {
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: url('/static/bridge.svg') no-repeat center bottom / 100% auto;
+      opacity: .14;
+    }
+    .login-wrap { position: relative; z-index: 1; width: 100%; max-width: 400px; }
+    .card {
+      background: var(--panel-solid); border: 1px solid var(--border);
+      border-radius: 14px; padding: 40px 38px; box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+    .brand-head { text-align: center; margin-bottom: 6px; }
+    .brand-head .mark {
+      width: 52px; height: 52px; margin: 0 auto 14px; display: grid; place-items: center;
+      border-radius: 14px; background: linear-gradient(160deg, rgba(63,208,255,.2), rgba(43,158,219,.05));
+      border: 1px solid var(--line); box-shadow: 0 0 22px var(--accent-glow);
+    }
+    .brand-head .mark svg { width: 32px; height: 32px; }
+    .card h1 { color: var(--text-strong); font-size: 24px; text-align: center; letter-spacing: 2px; font-weight: 700; }
+    .card .sub { color: var(--muted); font-size: 13px; text-align: center; margin: 10px 0 26px; line-height: 1.7; }
+    .card .sub .pill { display: inline-block; margin-top: 8px; padding: 2px 12px; border-radius: 12px;
+      font-size: 11px; color: var(--accent); border: 1px solid var(--line); background: rgba(63,208,255,.06); }
+    label { color: #8fd8ff; font-size: 13px; display: block; margin: 14px 0 6px; letter-spacing: .5px; }
+    .field { position: relative; }
+    .field .ico { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; opacity: .55; }
+    input {
+      width: 100%; padding: 12px 12px 12px 40px; border: 1px solid var(--border);
+      border-radius: 8px; background: var(--bg); color: var(--text); font-size: 14px;
+      transition: border-color .15s, box-shadow .15s; outline: none;
+    }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    button {
+      width: 100%; margin-top: 24px; padding: 12px; background: linear-gradient(90deg, #1e88e5, #2b9edb);
+      color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 700;
+      letter-spacing: 4px; cursor: pointer; transition: filter .15s;
+    }
+    button:hover { filter: brightness(1.12); }
+    .error {
+      color: var(--crit); font-size: 13px; text-align: center; margin-top: 14px;
+      padding: 8px; border-radius: 6px; background: var(--crit-bg); border: 1px solid var(--crit-border);
+    }
+    .foot { text-align: center; color: var(--faint); font-size: 11px; margin-top: 18px; letter-spacing: 1px; }
   </style>
 </head>
 <body>
 
-<div class="card">
-  <h1>🌉 桥体卫士</h1>
-  <p class="sub">桥梁结构健康监测系统<br>缩尺模型受载变化模拟 · 应变实时监测与分级报警</p>
-  <form method="POST">
-    <label>用户名</label>
-    <input type="text" name="username" required autocomplete="username">
-    <label>密码</label>
-    <input type="password" name="password" required autocomplete="current-password">
-    <button type="submit">登 录</button>
-    {% if error %}<div class="error">{{ error }}</div>{% endif %}
-  </form>
+<div class="bridge-bg"></div>
+
+<div class="login-wrap">
+  <div class="card">
+    <div class="brand-head">
+      <div class="mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#3fd0ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 18h18" />
+          <path d="M3 18c2.5-4 6-6 9-6s6.5 2 9 6" />
+          <path d="M12 12V6" />
+          <path d="M6 6h12" />
+        </svg>
+      </div>
+      <h1>桥体卫士</h1>
+    </div>
+    <p class="sub">桥梁结构健康监测系统<br>
+      缩尺模型受载变化模拟 · 应变实时监测与分级报警
+      <span class="pill">边缘物联网 · 可解释预警</span>
+    </p>
+
+    <form method="POST" action="/login">
+      <label for="username">用户名</label>
+      <div class="field">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#7a9cc0" stroke-width="1.8"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6"/></svg>
+        <input type="text" id="username" name="username" required autocomplete="username" placeholder="请输入用户名">
+      </div>
+      <label for="password">密码</label>
+      <div class="field">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="#7a9cc0" stroke-width="1.8"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+        <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="请输入密码">
+      </div>
+      <button type="submit">登 录</button>
+      {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    </form>
+
+    <div class="foot">BRIDGE GUARDIAN · STRUCTURAL HEALTH MONITORING</div>
+  </div>
 </div>
 
 </body>

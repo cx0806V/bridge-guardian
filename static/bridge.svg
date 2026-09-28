@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 500" fill="none">
+  <g stroke="#3fd0ff" stroke-width="1.4" opacity="0.35">
+    <!-- 桥面 -->
+    <path d="M60 300 H1380" />
+    <path d="M60 316 H1380" stroke-opacity="0.5" />
+    <!-- 主缆（悬索桥双缆） -->
+    <path d="M140 300 C 360 130, 640 90, 720 90 C 800 90, 1080 130, 1300 300" />
+    <path d="M140 316 C 360 152, 640 112, 720 112 C 800 112, 1080 152, 1300 316" stroke-opacity="0.7" />
+    <!-- 塔柱 -->
+    <path d="M360 90 V300" stroke-width="2.4" />
+    <path d="M1080 90 V300" stroke-width="2.4" />
+    <!-- 吊索 -->
+    <path d="M440 128 L440 300" stroke-opacity="0.55" />
+    <path d="M520 104 L520 300" stroke-opacity="0.55" />
+    <path d="M600 96 L600 300" stroke-opacity="0.55" />
+    <path d="M720 90 L720 300" stroke-opacity="0.55" />
+    <path d="M840 96 L840 300" stroke-opacity="0.55" />
+    <path d="M920 104 L920 300" stroke-opacity="0.55" />
+    <path d="M1000 128 L1000 300" stroke-opacity="0.55" />
+  </g>
+  <g stroke="#3fd0ff" stroke-width="1" opacity="0.18">
+    <!-- 水面波纹 -->
+    <path d="M40 360 Q 120 348, 200 360 T 360 360 T 520 360 T 680 360 T 840 360 T 1000 360 T 1160 360 T 1320 360 T 1420 360" />
+    <path d="M40 392 Q 120 380, 200 392 T 360 392 T 520 392 T 680 392 T 840 392 T 1000 392 T 1160 392 T 1320 392 T 1420 392" stroke-opacity="0.6" />
+  </g>
+</svg>

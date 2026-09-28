@@ -1,5 +1,5 @@
 ============================= test session starts =============================
-platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\CX\.workbuddy\binaries\python\envs\default\Scripts\python.exe
+platform win32 -- Python 3.13.14, pytest-9.1.1, pluggy-1.6.0 -- C:\Users\CX\.workbuddy\binaries\python\envs\bridgeguardian\Scripts\python.exe
 cachedir: .pytest_cache
 rootdir: C:\Users\CX\Documents\GitHub\bridge guardian
 collecting ... collected 37 items
@@ -42,4 +42,4 @@ tests/test_serial_flow.py::test_serial_invalid_line_ignored PASSED       [ 94%]
 tests/test_serial_flow.py::test_serial_new_schema_fields PASSED          [ 97%]
 tests/test_serial_flow.py::test_simulated_scenario_state_machine PASSED  [100%]
 
-============================= 37 passed in 3.28s ==============================
+============================= 37 passed in 3.32s ==============================

@@ -2,62 +2,68 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>历史记录 - 桥梁结构健康监测系统</title>
   <script src="/static/echarts.min.js"></script>
+  <link rel="stylesheet" href="/static/app.css">
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #0a1930; color: #cfe8ff; font-family: "Microsoft YaHei", sans-serif; padding: 10px; min-height: 100vh; }
-    header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #1e3a5f; padding-bottom: 8px; margin-bottom: 10px; }
-    header h1 { font-size: 22px; color: #4fc3f7; }
-    header a { color: #4fc3f7; text-decoration: none; }
-    header a:hover { text-decoration: underline; }
-    .tabs { margin-bottom: 10px; }
-    .tabs button { background: #10263f; color: #7fd4ff; border: 1px solid #1e3a5f; border-radius: 6px; padding: 6px 18px; cursor: pointer; font-size: 14px; margin-right: 8px; }
-    .tabs button.active { background: #1e88e5; color: #fff; }
-    .panel { background: #10263f; border: 1px solid #1e3a5f; border-radius: 8px; padding: 12px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { padding: 5px 6px; border-bottom: 1px solid #1e3a5f; text-align: center; }
-    th { color: #7fd4ff; }
-    td.alarm { color: #ff6b6b; }
-    .stats { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
-    .stat { flex: 1; min-width: 130px; background: #0a1930; border: 1px solid #1e3a5f; border-radius: 8px; padding: 10px; text-align: center; }
-    .stat span { font-size: 24px; font-weight: bold; color: #ffb74d; display: block; }
-    .stat label { font-size: 12px; color: #7a9cc0; }
-    .message { color: #ff6b6b; text-align: center; margin: 10px 0; min-height: 18px; }
-    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
-    .filters input, .filters button { padding: 6px 10px; border: 1px solid #1e3a5f; border-radius: 6px; background: #10263f; color: #cfe8ff; }
-    .filters button { cursor: pointer; background: #1e88e5; border: 0; }
+    body { padding: 12px; position: relative; }
+    .bridge-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background: url('/static/bridge.svg') no-repeat center bottom / 100% auto; opacity: .07; }
+    .page { position: relative; z-index: 1; }
+    header { display: flex; justify-content: space-between; align-items: center;
+      border-bottom: 1px solid var(--border); padding-bottom: 10px; margin-bottom: 12px; }
+    header h1 { font-size: 22px; color: var(--accent); letter-spacing: 1px; }
+    .tabs { margin-bottom: 12px; }
+    .tabs button { background: #10263f; color: #7fd4ff; border: 1px solid var(--border);
+      border-radius: var(--radius-sm); padding: 7px 18px; cursor: pointer; font-size: 14px; margin-right: 8px; }
+    .tabs button.active { background: #1e88e5; color: #fff; border-color: #1e88e5; }
+    .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+    .stats { display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+    .stat { flex: 1; min-width: 130px; background: rgba(10,25,48,.6); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px 10px; text-align: center; }
+    .stat span { font-size: 26px; font-weight: 700; color: #ffb74d; display: block; font-variant-numeric: tabular-nums; }
+    .stat label { font-size: 12px; color: var(--muted); }
+    .message { color: var(--crit); text-align: center; margin: 10px 0; min-height: 18px; font-size: 13px; }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+    .filters label { color: var(--muted); font-size: 13px; }
+    .filters input { padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      background: var(--bg); color: var(--text); color-scheme: dark; }
+    .filters .btn { background: #1e88e5; }
+    .filters .btn-ghost { background: transparent; border: 1px solid var(--line); color: var(--accent); }
     .timeline { position: relative; padding: 4px 0; }
     .tl-item { display: flex; gap: 12px; padding: 10px 0; position: relative; }
-    .tl-item::before { content: ''; position: absolute; left: 7px; top: 0; bottom: 0; width: 2px; background: #1e3a5f; }
+    .tl-item::before { content: ''; position: absolute; left: 7px; top: 0; bottom: 0; width: 2px; background: var(--line); }
     .tl-dot { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto; margin-top: 2px; position: relative; z-index: 1; }
-    .tl-dot.lv-warn { background: #fbbf24; box-shadow: 0 0 8px #fbbf24; }
-    .tl-dot.lv-alarm { background: #fb923c; box-shadow: 0 0 8px #fb923c; }
-    .tl-dot.lv-crit { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
-    .tl-body { flex: 1; background: rgba(10,25,48,.5); border: 1px solid #1e3a5f; border-radius: 8px; padding: 10px 12px; }
+    .tl-dot.lv-warn { background: var(--warn); box-shadow: 0 0 8px var(--warn); }
+    .tl-dot.lv-alarm { background: var(--alarm); box-shadow: 0 0 8px var(--alarm); }
+    .tl-dot.lv-crit { background: var(--crit); box-shadow: 0 0 8px var(--crit); }
+    .tl-dot.lv-offline { background: var(--offline); box-shadow: 0 0 8px var(--offline); }
+    .tl-body { flex: 1; background: rgba(10,25,48,.5); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
     .tl-top { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .tl-level { font-weight: 700; font-size: 13px; }
-    .tl-rule { color: #4fc3f7; font-size: 12px; background: #123052; padding: 2px 8px; border-radius: 12px; }
-    .tl-time { color: #7a9cc0; font-size: 12px; margin-left: auto; }
-    .tl-src { color: #7a9cc0; font-size: 12px; }
-    .tl-reason { color: #cfe8ff; font-size: 13px; margin-top: 6px; }
-    .tl-status { color: #7a9cc0; font-size: 12px; margin-top: 6px; }
-    .tl-status.done { color: #4ade80; }
-    .tl-empty { text-align: center; color: #7a9cc0; padding: 24px 0; }
+    .tl-rule { color: var(--accent); font-size: 12px; background: #123052; padding: 2px 9px; border-radius: 12px; }
+    .tl-time { color: var(--muted); font-size: 12px; margin-left: auto; }
+    .tl-src { color: var(--muted); font-size: 12px; }
+    .tl-reason { color: var(--text); font-size: 13px; margin-top: 6px; line-height: 1.6; }
+    .tl-status { color: var(--muted); font-size: 12px; margin-top: 6px; }
+    .tl-status.done { color: var(--ok); }
+    .tl-empty { text-align: center; color: var(--muted); padding: 26px 0; }
     @media (max-width: 760px) {
-      body { padding: 8px; }
       header { align-items: flex-start; gap: 8px; flex-direction: column; }
       .tabs button { margin-bottom: 6px; }
       .stat { min-width: 100%; }
-      .panel { overflow-x: auto; }
     }
   </style>
 </head>
 <body>
 
+<div class="bridge-bg"></div>
+<div class="page">
+
 <header>
   <h1>📜 历史记录</h1>
-  <a href="/dashboard">← 返回主画面</a>
+  <a class="nav-link" href="/dashboard">← 返回主画面</a>
 </header>
 
 <div class="tabs">
@@ -68,8 +74,8 @@
 <div class="filters">
   <label>开始时间 <input id="startTime" type="datetime-local"></label>
   <label>结束时间 <input id="endTime" type="datetime-local"></label>
-  <button onclick="applyFilter()">查询</button>
-  <button onclick="exportHistory()">导出当前结果</button>
+  <button class="btn" onclick="applyFilter()">查询</button>
+  <button class="btn btn-ghost" onclick="exportHistory()">导出当前结果</button>
 </div>
 
 <p id="historyMessage" class="message"></p>
@@ -86,7 +92,9 @@
     <div class="stat"><span id="overCount">--</span><label>超限次数 (<span id="overCountLabel">>{{ threshold }}</span>)</label></div>
     <div class="stat"><span id="compare">--</span><label>后半段 vs 前半段均值</label></div>
   </div>
-  <div class="panel"><div id="histChart" style="width:100%;height:320px"></div></div>
+  <div class="panel"><div id="histChart" style="width:100%;height:340px"></div></div>
+</div>
+
 </div>
 
 <script>
@@ -100,12 +108,12 @@
   }
 
   function showHistoryMessage(message) {
-    document.getElementById('historyMessage').textContent = message; // 历史页面错误提示
+    document.getElementById('historyMessage').textContent = message;
   }
 
   function switchTab(tabName) {
     currentTab = tabName;
-    const isAlarmTab = tabName === 'alarm'; // 当前是否显示报警标签页
+    const isAlarmTab = tabName === 'alarm';
     document.getElementById('alarmSection').style.display = isAlarmTab ? 'block' : 'none';
     document.getElementById('dataSection').style.display = isAlarmTab ? 'none' : 'block';
     document.getElementById('tabAlarm').className = isAlarmTab ? 'active' : '';
@@ -115,8 +123,8 @@
   }
 
   function getQueryString() {
-    const startTime = document.getElementById('startTime').value.replace('T', ' '); // 筛选开始时间
-    const endTime = document.getElementById('endTime').value.replace('T', ' '); // 筛选结束时间
+    const startTime = document.getElementById('startTime').value.replace('T', ' ');
+    const endTime = document.getElementById('endTime').value.replace('T', ' ');
     return new URLSearchParams({ start: startTime, end: endTime }).toString();
   }
 
@@ -125,23 +133,24 @@
   }
 
   function exportHistory() {
-    const recordType = currentTab === 'alarm' ? 'alarms' : 'data'; // 当前导出的历史记录类型
+    const recordType = currentTab === 'alarm' ? 'alarms' : 'data';
     window.location.href = `/api/export/${recordType}?${getQueryString()}`;
   }
 
   async function loadAlarms() {
     try {
-      const response = await fetch(`/api/history_alarms?${getQueryString()}`); // 获取筛选后历史报警的响应
+      const response = await fetch(`/api/history_alarms?${getQueryString()}`);
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
-      const alarmRows = await response.json(); // SQLite 中的历史报警记录
-      const lvCls = l => l === '严重报警' ? 'lv-crit' : (l === '报警' ? 'lv-alarm' : 'lv-warn');
+      const alarmRows = await response.json();
+      const lvCls = l => l === '严重报警' ? 'lv-crit' : (l === '报警' ? 'lv-alarm' : (l === '预警' ? 'lv-warn' : 'lv-offline'));
+      const lvColor = l => l === '严重报警' ? 'var(--crit)' : (l === '报警' ? 'var(--alarm)' : (l === '预警' ? 'var(--warn)' : 'var(--offline)'));
       const html = alarmRows.slice().reverse().map(a =>
         `<div class="tl-item">
           <div class="tl-dot ${lvCls(a.level)}"></div>
           <div class="tl-body">
             <div class="tl-top">
-              <span class="tl-level ${lvCls(a.level)}">${escapeHtml(a.level)}</span>
+              <span class="tl-level" style="color:${lvColor(a.level)}">${escapeHtml(a.level)}</span>
               <span class="tl-rule">${escapeHtml(a.rule)}</span>
               <span class="tl-time">${escapeHtml(a.ts)}</span>
               <span class="tl-src">${a.source === 'serial' ? '真实设备' : (a.source === 'sim' ? '模拟' : '历史导入')}</span>
@@ -158,23 +167,24 @@
     }
   }
 
-  let historyChart = null; // 历史曲线图表实例
+  let historyChart = null;
   async function loadData() {
     try {
-      const response = await fetch(`/api/history_data?${getQueryString()}`); // 获取筛选后历史数据的响应
+      const response = await fetch(`/api/history_data?${getQueryString()}`);
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) throw new Error(`请求失败：${response.status}`);
-      const dataRows = await response.json(); // SQLite 中的历史数据行
+      const dataRows = await response.json();
       if (dataRows.length === 0) {
         showHistoryMessage('暂无历史数据。');
+        if (historyChart) historyChart.clear();
         return;
       }
 
-      const sampleTimes = dataRows.map(dataRow => dataRow.ts); // 历史采样时间列表
-      const strainValues = dataRows.map(dataRow => parseFloat(dataRow.value)); // 历史应变数值列表
+      const sampleTimes = dataRows.map(dataRow => dataRow.ts);
+      const strainValues = dataRows.map(dataRow => parseFloat(dataRow.value));
       const averageValue = strainValues.reduce((total, value) => total + value, 0) / strainValues.length;
-      const maximumValue = Math.max(...strainValues); // 历史最大应变值
-      const minimumValue = Math.min(...strainValues); // 历史最小应变值
+      const maximumValue = Math.max(...strainValues);
+      const minimumValue = Math.min(...strainValues);
       const overThresholdCount = strainValues.filter(value => value > currentThreshold).length;
 
       document.getElementById('avgAll').textContent = averageValue.toFixed(2);
@@ -183,7 +193,7 @@
       document.getElementById('overCount').textContent = overThresholdCount;
 
       if (strainValues.length >= 2) {
-        const midpoint = Math.floor(strainValues.length / 2); // 前后两段的分界位置
+        const midpoint = Math.floor(strainValues.length / 2);
         const frontAverage = strainValues.slice(0, midpoint).reduce((total, value) => total + value, 0) / midpoint;
         const backAverage = strainValues.slice(midpoint).reduce((total, value) => total + value, 0) / (strainValues.length - midpoint);
         const averageDifference = backAverage - frontAverage;
@@ -193,17 +203,28 @@
 
       if (!historyChart) historyChart = echarts.init(document.getElementById('histChart'));
       historyChart.setOption({
-        xAxis: { type: 'category', data: sampleTimes, axisLabel: { color: '#7fd4ff' } },
-        yAxis: { type: 'value', axisLabel: { color: '#7fd4ff' } },
-        tooltip: { trigger: 'axis' },
-        dataZoom: [{ type: 'inside' }],
+        grid: { left: 44, right: 16, top: 30, bottom: 40 },
+        xAxis: { type: 'category', data: sampleTimes, axisLabel: { color: '#7a9cc0', fontSize: 10 },
+          axisLine: { lineStyle: { color: '#21446b' } } },
+        yAxis: { type: 'value', scale: true, axisLabel: { color: '#7a9cc0', fontSize: 10 },
+          splitLine: { lineStyle: { color: 'rgba(33,68,107,.35)' } } },
+        tooltip: { trigger: 'axis', backgroundColor: 'rgba(13,32,56,.95)', borderColor: '#1c3a5e',
+          textStyle: { color: '#cfe8ff', fontSize: 12 } },
+        dataZoom: [
+          { type: 'inside', start: 0, end: 100 },
+          { type: 'slider', height: 14, bottom: 8, borderColor: '#1c3a5e',
+            backgroundColor: 'rgba(13,32,56,.6)', fillerColor: 'rgba(63,208,255,.15)',
+            handleStyle: { color: '#3fd0ff' }, textStyle: { color: '#7a9cc0', fontSize: 10 } }
+        ],
         series: [{
           name: '应变指标', type: 'line', data: strainValues, smooth: true, showSymbol: false,
-          lineStyle: { color: '#4fc3f7', width: 2 },
+          lineStyle: { color: '#3fd0ff', width: 2 },
+          areaStyle: { color: 'rgba(63,208,255,.08)' },
           markLine: {
+            symbol: 'none', silent: true,
             data: [{ yAxis: currentThreshold, name: '阈值' }],
-            lineStyle: { color: '#ff4444', type: 'dashed' },
-            label: { color: '#ff6b6b', formatter: `阈值 ${currentThreshold}μ` }
+            lineStyle: { color: '#f43f5e', type: 'dashed', width: 1.5 },
+            label: { color: '#f43f5e', formatter: '阈值 ' + currentThreshold, position: 'insideEndTop', fontSize: 10 }
           }
         }]
       });
@@ -215,7 +236,7 @@
 
   async function loadThreshold() {
     try {
-      const response = await fetch('/api/settings'); // 获取当前生效设置
+      const response = await fetch('/api/settings');
       if (response.status === 401) { window.location.href = '/login'; return; }
       if (!response.ok) return;
       const s = await response.json();

@@ -131,7 +131,7 @@ class Simulator:
         self._prev_strain = None         # 上一次采样值（计算变化率）
         self.latest = {
             "strain": 0.0,                # 当前应变值
-            "rate": None,                 # 当前变化率（με/采样周期）
+            "rate": None,                 # 当前变化率（相对应变指标/采样周期，无量纲）
             "interval": interval,         # 采集周期（大屏显示用）
             "threshold": threshold,       # 报警阈值（大屏显示用）
             "history": [],                # 实时曲线 [{"time","strain"}]，最多60点
@@ -299,7 +299,7 @@ class Simulator:
             self.engine.set_threshold(threshold_value)
             self.db.add_setting(threshold_value, interval_value)
             self.db.add_audit(actor, "update_settings",
-                              f"阈值={threshold_value} με，周期={interval_value} 秒")
+                              f"阈值={threshold_value}，周期={interval_value} 秒")
 
     def acknowledge_alarm(self, actor, alarm_id):
         """将指定报警标记为已处理（按数据库主键精确匹配，避免歧义）。"""
