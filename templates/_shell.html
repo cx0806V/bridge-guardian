@@ -1,0 +1,679 @@
+{# ============================================================================
+   _shell.html —— 全站共享骨架（Jinja 宏 + 内联 CSS + 内联原生 JS）
+   ----------------------------------------------------------------------------
+   为什么单独一个文件：侧边菜单只有这一处定义。五个页面各写一遍 = 改一条菜单
+   要改五处，必然腐化。页面侧只需要两行：
+
+       {% import "_shell.html" as shell %}
+       {{ shell.shell_sidebar('trend') }}
+       {{ shell.shell_topbar('实时趋势', '桥梁受载趋势 · 阈值仪表盘', 'trend') }}
+
+   导出宏：
+     shell_sidebar(active)            → 桌面固定侧栏 + 移动端抽屉（含遮罩）
+     shell_topbar(title, subtitle, active) → 顶栏（页标题 + 副标题 + 右侧状态区）
+
+   离线红线：不引入任何第三方 UI 库 / 图标库 / 字体 CDN；图标一律内联 SVG
+   （单色、stroke=currentColor、18~20px）；JS 是原生 ES5 语法（现场老旧浏览器也能跑）。
+
+   无障碍：
+     <nav aria-label="主导航">、当前项 aria-current="page"、汉堡按钮 aria-expanded，
+     抽屉打开时 focus 移入抽屉、ESC 关闭、点遮罩/选中条目即关闭，并锁定 body 滚动。
+
+   尺寸契约（与 static/app.css 第 20 节的白色主题配合）：
+     · 桌面侧栏 240px，收起 64px；右缘 1px 浅灰分隔线
+     · ≤860px 视口高度默认收起为图标条；≤768px 视口宽度切「汉堡 + 抽屉」
+     · 收起状态存 localStorage['bg.sidebar.collapsed']（'1' / '0'），刷新后保持
+     · 抽屉内是【同一份】菜单 HTML（设备端不渲染固定侧栏）
+   ============================================================================ #}
+
+{# ---------- 图标：内联 SVG，单色线性，currentColor ---------- #}
+{% macro icon(name, size) -%}
+{%- set s = size|default(19) -%}
+<svg class="sh-ico" width="{{ s }}" height="{{ s }}" viewBox="0 0 24 24" fill="none"
+     stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+     aria-hidden="true" focusable="false">
+{%- if name == 'bridge' -%}
+  <path d="M3 17h18"/><path d="M3 17c2.4-4.4 6-6.6 9-6.6s6.6 2.2 9 6.6"/><path d="M12 10.4V5"/>
+  <path d="M6.5 5h11"/><path d="M8.4 13.2V17"/><path d="M15.6 13.2V17"/>
+{%- elif name == 'trend' -%}
+  <path d="M3 20h18"/><path d="M4 15.5l4.6-4.9 3.4 3.2L20 5.6"/><path d="M15.6 5.6H20v4.3"/>
+{%- elif name == 'alarm' -%}
+  <path d="M12 3.8a5.2 5.2 0 0 1 5.2 5.2c0 4 1.6 5.6 1.6 5.6H5.2s1.6-1.6 1.6-5.6A5.2 5.2 0 0 1 12 3.8z"/>
+  <path d="M10 18a2 2 0 0 0 4 0"/>
+{%- elif name == 'history' -%}
+  <circle cx="12" cy="12" r="8.2"/><path d="M12 7.6V12l3 1.9"/>
+{%- elif name == 'device' -%}
+  <rect x="4" y="4" width="16" height="16" rx="2.4"/><path d="M9 9h6v6H9z"/><path d="M9 2.6V4M15 2.6V4M9 20v1.4M15 20v1.4M2.6 9H4M2.6 15H4M20 9h1.4M20 15h1.4"/>
+{%- elif name == 'settings' -%}
+  <circle cx="12" cy="12" r="3"/>
+  <path d="M19.4 14.4a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-2.87 1.2 2 2 0 1 1-4 0 1.7 1.7 0 0 0-2.87-1.2l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 3.6 13.4a2 2 0 1 1 0-4 1.7 1.7 0 0 0 1.2-2.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 2.87-1.2 2 2 0 1 1 4 0 1.7 1.7 0 0 0 2.87 1.2l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0 1.2 2.87 2 2 0 1 1 0 4 1.7 1.7 0 0 0-1.57 1.03z"/>
+{%- elif name == 'menu' -%}
+  <path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>
+{%- elif name == 'close' -%}
+  <path d="M6 6l12 12"/><path d="M18 6L6 18"/>
+{%- elif name == 'bell' -%}
+  <path d="M12 3.8a5.2 5.2 0 0 1 5.2 5.2c0 4 1.6 5.6 1.6 5.6H5.2s1.6-1.6 1.6-5.6A5.2 5.2 0 0 1 12 3.8z"/>
+  <path d="M10 18a2 2 0 0 0 4 0"/>
+{%- elif name == 'user' -%}
+  <circle cx="12" cy="8.2" r="3.4"/><path d="M4.8 20c0-3.6 3.2-6 7.2-6s7.2 2.4 7.2 6"/>
+{%- elif name == 'logout' -%}
+  <path d="M15 4.6h3.2A1.8 1.8 0 0 1 20 6.4v11.2a1.8 1.8 0 0 1-1.8 1.8H15"/>
+  <path d="M10 8.2L6.2 12l3.8 3.8"/><path d="M6.4 12H15"/>
+{%- elif name == 'collapse' -%}
+  <path d="M14.6 5.4L8 12l6.6 6.6"/><path d="M18.8 5.4L12.2 12l6.6 6.6"/>
+{%- elif name == 'expand' -%}
+  <path d="M9.4 5.4L16 12l-6.6 6.6"/><path d="M5.2 5.4L11.8 12l-6.6 6.6"/>
+{%- elif name == 'brush' -%}
+  <path d="M4 20l4.2-1.2 9.1-9.1a2.1 2.1 0 0 0-3-3l-9.1 9.1z"/><path d="M13.6 6.2l4.2 4.2"/>
+{%- elif name == 'external' -%}
+  <path d="M14 4h6v6"/><path d="M20 4l-8.4 8.4"/><path d="M18 14.6V19a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4.4"/>
+{%- elif name == 'check' -%}
+  <path d="M5 12.6l4.6 4.6L19 6.6"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
+
+{# ---------- 六个一级菜单条目（已定稿，不许增删改名） ----------
+   active 必须显式传入：Jinja 宏【不】继承调用方作用域里的变量，
+   直接引用外层宏参数会得到 Undefined，六条菜单就全都不会被高亮。 #}
+{% macro nav_items(active) -%}
+{%- set items = [
+  ('dashboard', '/dashboard', '3D 监测',    'bridge'),
+  ('trend',     '/trend',     '实时趋势',   'trend'),
+  ('alarms',    '/alarms',    '报警中心',   'alarm'),
+  ('history',   '/history',   '历史与导出', 'history'),
+  ('device',    '/device',    '设备与数据源', 'device'),
+  ('settings',  '/settings',  '系统设置',   'settings')
+] -%}
+{%- for key, href, label, ico in items %}
+{# data-mobile-hide：手机端取消 3D 界面，抽屉里不再出现「3D 监测」入口（桌面端照旧显示）。
+   只加这一个属性，不增删/不改名任何菜单条目 —— tests/test_shell.py 的六项定稿校验仍然成立。 #}
+<a class="sh-nav-item{% if active == key %} is-active{% endif %}" href="{{ href }}"
+   data-nav="{{ key }}" data-tip="{{ label }}"
+   {% if key == 'dashboard' %}data-mobile-hide="1"{% endif %}
+   {% if active == key %}aria-current="page"{% endif %}>
+  <span class="sh-nav-ico">{{ icon(ico) }}</span>
+  <span class="sh-nav-text">{{ label }}</span>
+</a>
+{%- endfor %}
+{%- endmacro %}
+
+{# ---------- 侧栏 / 抽屉 ----------
+   同一份 HTML 服务两种形态：桌面固定侧栏（240px→64px 可收起）、
+   移动端抽屉（≤768px，带半透明遮罩，点遮罩/选中条目即关闭）。 #}
+{% macro shell_sidebar(active) -%}
+<aside class="sh-side" id="sSide" data-active="{{ active }}">
+  <div class="sh-side-head">
+    <a class="sh-brand" href="/dashboard" title="桥体卫士 · 桥梁结构健康监测系统">
+      <span class="sh-brand-mark">{{ icon('bridge', 22) }}</span>
+      <span class="sh-brand-text">
+        <b>桥体卫士</b>
+        <i>BRIDGE GUARDIAN</i>
+      </span>
+    </a>
+    <button class="sh-drawer-close" id="sDrawerClose" type="button" aria-label="收起菜单">{{ icon('close', 20) }}</button>
+  </div>
+
+  <nav class="sh-nav" aria-label="主导航">
+    {{ nav_items(active) }}
+  </nav>
+
+  <div class="sh-side-foot">
+    <div class="sh-user-row">
+      <span class="sh-avatar" aria-hidden="true">{{ icon('user', 18) }}</span>
+      <span class="sh-user-meta">
+        <b class="sh-user-name">{{ user|default('admin', true) }}</b>
+        <i>已登录</i>
+      </span>
+      {% if active == 'settings' %}<span class="sh-user-here" aria-hidden="true">当前</span>{% endif %}
+    </div>
+    <div class="sh-side-acts">
+      <a class="sh-side-act" href="/logout" title="退出登录" aria-label="退出登录">
+        {{ icon('logout', 18) }}<span class="sh-side-act-t">退出</span>
+      </a>
+      <button class="sh-side-act sh-collapse" id="sCollapseToggle" type="button"
+              aria-label="收起侧边菜单" aria-expanded="true" title="收起侧边菜单">
+        <span class="sh-collapse-ico">{{ icon('collapse', 18) }}</span>
+        <span class="sh-side-act-t">收起</span>
+      </button>
+    </div>
+  </div>
+</aside>
+<div class="sh-scrim" id="sScrim" hidden></div>
+{%- endmacro %}
+
+{# ---------- 顶栏 ----------
+   左：☰（仅手机端显示） + 页面标题 + 一行灰色副标题
+   右：通知铃铛 / 状态徽章（sim 模式提示）/ 用户信息（下拉含退出）
+   说明：数据源徽章的具体文案由页面脚本按 /api/data 的 source 字段如实填写；
+   serial 模式下页面会把 #sSimBadge 隐藏，绝不把真实设备说成模拟、也不反过来。 #}
+{% macro shell_topbar(title, subtitle, active) -%}
+<header class="sh-topbar">
+  <button class="sh-burger" id="sBurger" type="button" aria-label="打开菜单"
+          aria-controls="sSide" aria-expanded="false">{{ icon('menu', 22) }}</button>
+
+  <div class="sh-topbar-main">
+    <h1 class="sh-title">{{ title }}</h1>
+    <p class="sh-subtitle">{{ subtitle }}</p>
+  </div>
+
+  <div class="sh-topbar-side">
+    <span class="sh-sim-badge" id="sSimBadge" hidden>模拟演示 · 缩尺模型受载变化模拟</span>
+
+    <a class="sh-bell" href="/alarms" title="通知：报警中心" aria-label="通知：报警中心">
+      {{ icon('bell', 19) }}
+      <span class="sh-bell-dot" id="sBellDot" hidden></span>
+      <span class="sh-bell-num" id="sBellNum" hidden>0</span>
+    </a>
+
+    <span class="sh-conn" id="shConn" data-state="idle" title="数据连接状态">
+      <i class="sh-conn-dot" aria-hidden="true"></i><span id="shConnText">连接中…</span>
+    </span>
+
+    <details class="sh-user" id="sUserMenu">
+      <summary class="sh-user-btn" aria-label="用户菜单">
+        <span class="sh-avatar sm" aria-hidden="true">{{ icon('user', 16) }}</span>
+        <span class="sh-user-name">{{ user|default('admin', true) }}</span>
+      </summary>
+      <div class="sh-user-menu" role="menu">
+        <div class="sh-user-menu-head">
+          <b>{{ user|default('admin', true) }}</b>
+          <span>桥梁结构健康监测系统</span>
+        </div>
+        <a class="sh-user-menu-item" role="menuitem" href="/settings">{{ icon('settings', 17) }}系统设置</a>
+        <a class="sh-user-menu-item danger" role="menuitem" href="/logout">{{ icon('logout', 17) }}退出登录</a>
+      </div>
+    </details>
+  </div>
+</header>
+{%- endmacro %}
+
+{# ---------- 样式宏：由页面在 <head> 里调用 ----------
+   ⚠️ 关键坑（已实测）：Jinja 的 {% raw %}{% import %}{% endraw %} **只导出宏**，
+   import 之外的文件级内容（<style>/<script>）【不会】出现在导入方的输出里。
+   所以样式与脚本必须包成宏，由页面显式调用：
+     <head> 里：  {{ shell.shell_head() }}
+     </body> 前： {{ shell.shell_scripts() }}
+   这样骨架的 HTML / CSS / JS 三件套只有这一份定义，改一处全站生效 ——
+   不是把菜单复制到 5 个模板里。 #}
+{% macro shell_head() -%}
+<style>
+/* ============================================================================
+   shell 骨架样式（作用域统一加 .sh- 前缀，避免与 app.css 历史规则互相污染）
+   颜色全部走 app.css 的主题变量，随白色/深色主题切换；这里只写结构与状态。
+   ============================================================================ */
+:root { --sh-side-w: 240px; --sh-side-w-min: 64px; --sh-top-h: 64px; }
+
+/* ---------- 页面骨架：侧栏固定 + 主区独立滚动 ---------- */
+body.sh-body { min-height: 100vh; }
+.sh-layout { display: flex; align-items: stretch; min-height: 100vh; }
+.sh-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+  min-height: 100vh; min-width: 0; }
+.sh-content { flex: 1 1 auto; min-width: 0; padding: 18px 22px 26px;
+  padding-left: max(22px, env(safe-area-inset-left));
+  padding-right: max(22px, env(safe-area-inset-right)); }
+.sh-page { max-width: 1440px; margin: 0 auto; }
+
+/* ---------- 侧栏 ---------- */
+.sh-side {
+  flex: 0 0 var(--sh-side-w); width: var(--sh-side-w); max-width: var(--sh-side-w);
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--panel-solid, #fff); border-right: 1px solid var(--border, #e5e8eb);
+  padding: 14px 12px 12px;
+  position: sticky; top: 0; align-self: flex-start;
+  height: 100vh; overflow-y: auto; overflow-x: hidden;
+  transition: width .18s ease, flex-basis .18s ease, padding .18s ease;
+  z-index: 40;
+}
+.sh-side.is-collapsed { flex-basis: var(--sh-side-w-min); width: var(--sh-side-w-min);
+  max-width: var(--sh-side-w-min); padding-left: 8px; padding-right: 8px; }
+
+/* 品牌区：方形 Logo + 产品名 */
+.sh-side-head { display: flex; align-items: center; gap: 8px; padding: 4px 4px 14px; }
+.sh-brand { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--text, #1f2937); }
+.sh-brand:hover { color: var(--accent-2, #1a7f37); }
+.sh-brand-mark {
+  flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center;
+  border-radius: 10px; color: #fff; background: var(--accent, #16a34a);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .12);
+}
+.sh-brand-text { min-width: 0; display: flex; flex-direction: column; line-height: 1.25; }
+.sh-brand-text b { font-size: 16px; letter-spacing: .06em; color: var(--text-strong, #111827); }
+.sh-brand-text i { font-style: normal; font-size: 9.5px; letter-spacing: .14em; color: var(--faint, #9ca3af); }
+.sh-side.is-collapsed .sh-brand-text,
+.sh-side.is-collapsed .sh-nav-text,
+.sh-side.is-collapsed .sh-user-meta,
+.sh-side.is-collapsed .sh-side-act-t,
+.sh-side.is-collapsed .sh-user-here { display: none; }
+.sh-side.is-collapsed .sh-brand { justify-content: center; }
+.sh-side.is-collapsed .sh-side-head { justify-content: center; padding-left: 0; padding-right: 0; }
+
+/* 导航区：扁平列表（无二级、不嵌套），当前项 = 浅绿圆角填充块 + 绿字 */
+.sh-nav { display: flex; flex-direction: column; gap: 4px; flex: 1 1 auto; }
+.sh-nav-item {
+  display: flex; align-items: center; gap: 11px; min-height: 44px;
+  padding: 0 12px; border-radius: 8px; color: var(--muted, #6b7280);
+  font-size: 14px; line-height: 1; white-space: nowrap;
+  transition: background .15s ease, color .15s ease;
+}
+.sh-nav-item:hover { background: var(--bg-2, #f1f4f6); color: var(--text-strong, #111827); }
+/* 当前项：浅绿填充块 + 深绿文字。
+   ⚠ 文字必须用 --accent-2（实测白底 5.02:1 / 浅绿底 4.60:1），
+     直接用 --accent (#16a34a) 在浅绿底上只有 2.96:1，14px 文字不达 WCAG AA 4.5:1。 */
+.sh-nav-item.is-active {
+  background: var(--accent-soft, rgba(22, 163, 74, .10));
+  color: var(--accent-2, #1a7f37); font-weight: 600;
+}
+.sh-nav-item.is-active .sh-ico { stroke-width: 1.9; }
+.sh-nav-ico { flex: 0 0 auto; display: grid; place-items: center; width: 20px; height: 20px; }
+.sh-nav-text { overflow: hidden; text-overflow: ellipsis; }
+.sh-side.is-collapsed .sh-nav-item { justify-content: center; padding: 0; gap: 0; }
+
+/* 收起态 tooltip（JS 用 fixed 定位，绝不被侧栏 overflow 裁掉） */
+.sh-tip {
+  position: fixed; z-index: 90; pointer-events: none;
+  background: #111827; color: #f9fafb; font-size: 12px; line-height: 1;
+  padding: 7px 10px; border-radius: 6px; white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(16, 24, 40, .22);
+}
+
+/* 底部工具区：一行用户信息 + 一行「« 收起」 */
+.sh-side-foot { flex: 0 0 auto; border-top: 1px solid var(--border, #e5e8eb);
+  margin-top: 10px; padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
+.sh-user-row { display: flex; align-items: center; gap: 9px; padding: 2px 4px; min-width: 0; }
+.sh-user-meta { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+.sh-user-meta b { font-size: 13px; color: var(--text-strong, #111827); font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; }
+.sh-user-meta i { font-style: normal; font-size: 11px; color: var(--faint, #9ca3af); }
+/* 小字号文字一律用 --accent-2（白底 #15803d = 5.02:1，达 WCAG AA）；
+   --accent(#16a34a) 对白底只有 3.3:1，只可用于图标/边框/大字号（≥24px 或 ≥19px 粗体）。 */
+.sh-user-here { margin-left: auto; font-size: 10px; color: var(--accent-2, #15803d);
+  border: 1px solid var(--accent-border, rgba(22,163,74,.34)); border-radius: 10px; padding: 1px 7px; }
+.sh-side.is-collapsed .sh-user-row { justify-content: center; padding: 2px 0; }
+.sh-avatar { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; color: var(--accent, #16a34a);
+  background: var(--accent-soft, rgba(22, 163, 74, .10)); }
+.sh-avatar.sm { width: 26px; height: 26px; }
+.sh-side-acts { display: flex; gap: 6px; }
+.sh-side-act {
+  flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 40px; padding: 0 10px; border-radius: 8px; cursor: pointer;
+  font: inherit; font-size: 13px; color: var(--muted, #6b7280);
+  background: transparent; border: 1px solid var(--border, #e5e8eb);
+  transition: background .15s, color .15s, border-color .15s;
+}
+.sh-side-act:hover { background: var(--bg-2, #f1f4f6); color: var(--text-strong, #111827);
+  border-color: var(--line, #e5e8eb); }
+.sh-side-act[href="/logout"]:hover { color: var(--crit, #be123c); border-color: var(--crit-border, rgba(190,18,60,.35)); }
+.sh-side.is-collapsed .sh-side-act { flex: 1 1 auto; padding: 0; }
+.sh-collapse-ico { display: grid; place-items: center; }
+
+/* 抽屉关闭键：只在移动端抽屉里出现 */
+.sh-drawer-close { display: none; margin-left: auto; width: 40px; height: 40px;
+  border: 1px solid var(--border, #e5e8eb); border-radius: 8px; background: transparent;
+  color: var(--muted, #6b7280); cursor: pointer; place-items: center; }
+.sh-scrim { display: none; }
+
+/* ---------- 顶栏 ---------- */
+.sh-topbar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 14px;
+  min-height: var(--sh-top-h); padding: 10px 22px;
+  padding-left: max(22px, env(safe-area-inset-left));
+  padding-right: max(22px, env(safe-area-inset-right));
+  background: var(--panel-solid, #fff); border-bottom: 1px solid var(--border, #e5e8eb);
+  position: sticky; top: 0; z-index: 30;
+}
+.sh-topbar-main { min-width: 0; flex: 1 1 auto; }
+.sh-title { font-size: 19px; font-weight: 700; color: var(--text-strong, #111827);
+  letter-spacing: .01em; line-height: 1.25; margin: 0; }
+.sh-subtitle { margin: 3px 0 0; font-size: 12.5px; color: var(--muted, #6b7280); line-height: 1.3;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sh-topbar-side { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; }
+
+.sh-burger { display: none; width: 44px; height: 44px; flex: 0 0 auto; cursor: pointer;
+  border: 1px solid var(--border, #e5e8eb); border-radius: 8px; background: transparent;
+  color: var(--text-strong, #111827); place-items: center; }
+
+.sh-sim-badge { display: inline-flex; align-items: center; gap: 6px; max-width: 320px;
+  padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  color: #b45309; background: rgba(180, 83, 9, .08);
+  border: 1px dashed rgba(180, 83, 9, .45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sh-sim-badge[hidden] { display: none; }
+
+.sh-bell { position: relative; width: 40px; height: 40px; display: grid; place-items: center;
+  border-radius: 8px; color: var(--muted, #6b7280); border: 1px solid var(--border, #e5e8eb); }
+.sh-bell:hover { color: var(--accent-2, #15803d); border-color: var(--accent-border, rgba(22,163,74,.34));
+  background: var(--accent-soft, rgba(22,163,74,.08)); }
+.sh-bell-dot { position: absolute; top: 8px; right: 9px; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--crit, #be123c); box-shadow: 0 0 0 2px var(--panel-solid, #fff); }
+.sh-bell-num { position: absolute; top: 3px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: 9px; background: var(--crit, #be123c); color: #fff; font-size: 10px; font-weight: 700;
+  line-height: 16px; text-align: center; font-variant-numeric: tabular-nums; }
+.sh-bell-dot[hidden], .sh-bell-num[hidden] { display: none; }
+
+.sh-conn { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px;
+  color: var(--muted, #6b7280); white-space: nowrap; }
+.sh-conn-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--offline, #6b7280); flex: 0 0 auto; }
+.sh-conn[data-state="ok"] { color: var(--ok, #15803d); }
+.sh-conn[data-state="ok"] .sh-conn-dot { background: var(--ok, #15803d); }
+.sh-conn[data-state="warn"] { color: var(--warn, #b45309); }
+.sh-conn[data-state="warn"] .sh-conn-dot { background: var(--warn, #b45309); }
+.sh-conn[data-state="error"] { color: var(--crit, #be123c); }
+.sh-conn[data-state="error"] .sh-conn-dot { background: var(--crit, #be123c); }
+.sh-conn[data-state="sim"] { color: #b45309; }
+.sh-conn[data-state="sim"] .sh-conn-dot { background: #b45309; }
+
+.sh-user { position: relative; }
+.sh-user > summary { list-style: none; cursor: pointer; }
+.sh-user > summary::-webkit-details-marker { display: none; }
+.sh-user-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 10px;
+  border: 1px solid var(--border, #e5e8eb); border-radius: 8px; color: var(--text-strong, #111827);
+  font-size: 13px; background: transparent; }
+.sh-user-btn:hover { background: var(--bg-2, #f1f4f6); }
+.sh-user-menu { position: absolute; right: 0; top: calc(100% + 8px); z-index: 60; min-width: 208px;
+  background: var(--panel-solid, #fff); border: 1px solid var(--border, #e5e8eb); border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(16, 24, 40, .14); padding: 6px; }
+.sh-user-menu-head { padding: 8px 10px 10px; border-bottom: 1px solid var(--border, #e5e8eb); margin-bottom: 6px; }
+.sh-user-menu-head b { display: block; font-size: 13px; color: var(--text-strong, #111827); }
+.sh-user-menu-head span { font-size: 11px; color: var(--faint, #9ca3af); }
+.sh-user-menu-item { display: flex; align-items: center; gap: 9px; min-height: 40px; padding: 0 10px;
+  border-radius: 7px; font-size: 13px; color: var(--text, #1f2937); }
+.sh-user-menu-item:hover { background: var(--bg-2, #f1f4f6); color: var(--text-strong, #111827); }
+.sh-user-menu-item.danger { color: var(--crit, #be123c); }
+.sh-user-menu-item.danger:hover { background: var(--crit-bg, rgba(190, 18, 60, .08)); }
+
+/* ---------- 手机端（≤768px）：不渲染固定侧栏，改汉堡 + 抽屉 ---------- */
+@media (max-width: 768px) {
+  body.sh-body { overflow-x: hidden; }
+  .sh-side {
+    position: fixed; left: 0; top: 0; bottom: 0; height: 100%;
+    width: min(84vw, 300px); max-width: min(84vw, 300px); flex-basis: auto;
+    transform: translateX(-102%); transition: transform .22s ease;
+    box-shadow: 0 18px 44px rgba(16, 24, 40, .22);
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    z-index: 80;
+  }
+  .sh-side.is-open { transform: translateX(0); }
+  .sh-side.is-collapsed { width: min(84vw, 300px); max-width: min(84vw, 300px); }
+  .sh-side.is-collapsed .sh-brand-text,
+  .sh-side.is-collapsed .sh-nav-text,
+  .sh-side.is-collapsed .sh-user-meta,
+  .sh-side.is-collapsed .sh-side-act-t,
+  .sh-side.is-collapsed .sh-user-here { display: revert; }
+  .sh-side.is-collapsed .sh-nav-item { justify-content: flex-start; padding: 0 12px; gap: 11px; }
+  .sh-side.is-collapsed .sh-brand { justify-content: flex-start; }
+  .sh-side.is-collapsed .sh-side-head { justify-content: flex-start; padding-left: 4px; padding-right: 4px; }
+  .sh-side.is-collapsed .sh-side-act { padding: 0 10px; }
+  .sh-side.is-collapsed .sh-user-row { justify-content: flex-start; padding: 2px 4px; }
+  .sh-drawer-close { display: grid; }
+  .sh-collapse { display: none; }          /* 手机端没有「收起侧栏」概念，入口由汉堡承担 */
+
+  .sh-scrim { display: block; position: fixed; inset: 0; z-index: 70;
+    background: rgba(17, 24, 39, .42); opacity: 0; pointer-events: none; transition: opacity .2s ease; }
+  .sh-scrim[hidden] { display: none; }
+  body.sh-drawer-open .sh-scrim { opacity: 1; pointer-events: auto; }
+  body.sh-drawer-open { overflow: hidden; }
+
+  .sh-burger { display: grid; }
+  /* 手机端取消 3D 界面：抽屉里不再出现「3D 监测」入口（点进去也会被转到 /trend）。
+     桌面端（>768px）没有这条规则，菜单与改造前完全一致。
+     说明：菜单条目仍由 nav_items 宏统一渲染（唯一来源不变），这里只按属性做手机端隐藏。 */
+  .sh-side .sh-nav-item[data-mobile-hide] { display: none; }
+  /* 移动端顶栏必须单行收敛：`.sh-subtitle` 桌面就写了 nowrap + ellipsis，但 `.sh-title` 只设了字号，
+     没有溢出处理 —— 390px 宽时「设备与数据源」会被挤成 3 行，顶栏从 56px 涨到 ~92px，
+     溢出的标题压到下方页面内容上（实测压住 y=107 处的「采集参数」12px）。
+     两行都收敛成单行省略号，顶栏高度才稳定，永远不会盖住内容。
+     min-width:0 是必须的：flex 子项默认 min-width:auto 不会缩到比内容窄，
+     不加的话标题会被弹性项挤成「设…」而不是让位给同一行的内容。 */
+  .sh-title, .sh-subtitle { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  /* 手机端顶栏三处必须一起收口，少一处标题就会被压成「设…」（实测 440px 宽）：
+     ① `.sh-topbar-side` 桌面是 flex: 0 0 auto + min-width:auto → 整栏锁死 307px 不参与收缩，
+        先把这一栏改成可收缩（min-width:0 是必须的，flex 子项默认 min-width:auto）；
+     ② 栏内 `.sh-sim-badge`（文案「模拟演示 · 缩尺模型受载变化模拟」）与 `.sh-conn`
+        （「模拟数据源 · 每秒刷新」）各自也要能收缩，否则它们把这一栏撑满；
+     ③ 标题/副标题自身单行省略号（见上）。
+     优先级：页面标题（用户在哪一页）> 状态点 > 徽章全称
+     （诚实语义另有 title 属性与页内水印承担，不靠顶栏这一行全称）。
+     桌面端不受影响：这些规则都在 ≤768px 的手机档里。 */
+  .sh-topbar-side { flex: 0 1 auto; min-width: 0; }
+  .sh-sim-badge { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .sh-conn { flex: 0 0 auto; }
+  /* 手机端顶栏更紧凑，给标题留出可读宽度 */
+  .sh-topbar { min-height: 56px; padding: 8px 12px; gap: 6px; }
+  .sh-title { font-size: 16px; }
+  .sh-subtitle { font-size: 11.5px; }
+  .sh-user-name { display: none; }
+  .sh-user-btn { padding: 0 8px; }
+  .sh-sim-badge { max-width: 42vw; font-size: 11px; }
+  .sh-conn span { display: none; }
+  .sh-content { padding: 12px 12px calc(20px + env(safe-area-inset-bottom)); }
+
+  /* 触摸目标 ≥44×44px；按钮/链接字号 ≥12px */
+  .sh-nav-item { min-height: 48px; font-size: 15px; }
+  .sh-side-act { min-height: 44px; font-size: 13px; }
+  .sh-bell, .sh-user-btn { min-height: 44px; }
+  .sh-user-menu-item { min-height: 44px; font-size: 14px; }
+}
+@media (max-width: 390px) {
+  .sh-sim-badge { display: none; }
+}
+/* 移动端抽屉态隐藏横向滚动条（body 锁滚动期间） */
+body.sh-drawer-open { touch-action: none; }
+</style>
+{%- endmacro %}
+
+{# ---------- 行为宏：由页面在 </body> 之前调用 ----------
+   幂等：脚本内部有 guard（window.__bgShellInit / DOMContentLoaded 兜底），
+   重复调用或提前执行都不会重复绑定事件。 #}
+{% macro shell_scripts() -%}
+<script>
+/* ============================================================================
+   shell 行为（原生 ES5，无依赖）：
+     ① 桌面收起/展开（240 ↔ 64）+ localStorage 记忆 + 高度 ≤860px 默认收起
+     ② 收起态悬停/聚焦显示 tooltip（position:fixed，自绘，不被 overflow 裁切）
+     ③ 移动端汉堡抽屉：打开锁 body 滚动、点遮罩/选中条目/ESC 关闭、焦点管理
+     ④ 用户菜单：点击外部自动收起（<details> 原生行为 + 一点兜底）
+   幂等：脚本可能在 DOMContentLoaded 前后各执行一次，重复调用安全。
+   ============================================================================ */
+(function () {
+  'use strict';
+  if (window.__bgShellInit) return;
+  window.__bgShellInit = true;
+
+  var KEY = 'bg.sidebar.collapsed';     /* localStorage 记忆键（验证脚本会读它） */
+  var NARROW_H = 860;                   /* 笔记本矮屏：≤860px 默认收起为图标条 */
+  var MOBILE_W = 768;                   /* 手机端：改汉堡 + 抽屉 */
+
+  function byId(id) { return document.getElementById(id); }
+  function isMobile() { return window.innerWidth <= MOBILE_W; }
+
+  function readStored() {
+    try { return window.localStorage.getItem(KEY); } catch (e) { return null; }
+  }
+  function writeStored(v) {
+    try { window.localStorage.setItem(KEY, v); } catch (e) { /* 隐私模式下忽略 */ }
+  }
+
+  var side = byId('sSide');
+  var scrim = byId('sScrim');
+  var burger = byId('sBurger');
+  var collapseBtn = byId('sCollapseToggle');
+  var drawerClose = byId('sDrawerClose');
+  var tip = null;
+  /* 汉堡按钮可能不止一个：/dashboard 的轻量顶栏也有一个 #sBurger
+     （它不套 shell_topbar 宏，但抽屉是同一套骨架），这里统一收集、统一同步 aria-expanded。 */
+  var burgers = [];
+  (function collectBurgers() {
+    var all = document.querySelectorAll('.sh-burger, #sBurger');
+    for (var i = 0; i < all.length; i++) { if (burgers.indexOf(all[i]) < 0) burgers.push(all[i]); }
+  })();
+
+  /* ---------- ① 收起 / 展开 ---------- */
+  function applyCollapsed(collapsed, persist) {
+    if (!side) return;
+    side.classList.toggle('is-collapsed', !!collapsed);
+    if (collapseBtn) {
+      collapseBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      collapseBtn.setAttribute('aria-label', collapsed ? '展开侧边菜单' : '收起侧边菜单');
+      collapseBtn.setAttribute('title', collapsed ? '展开侧边菜单' : '收起侧边菜单');
+      var label = collapseBtn.querySelector('.sh-side-act-t');
+      if (label) label.textContent = collapsed ? '展开' : '收起';
+      var ico = collapseBtn.querySelector('.sh-collapse-ico');
+      if (ico) ico.innerHTML = collapsed ? ICON_EXPAND : ICON_COLLAPSE;
+    }
+    if (persist) writeStored(collapsed ? '1' : '0');
+    if (!collapsed) hideTip();
+  }
+  /* 收起态图标：与 _shell.html 的 macro icon('expand'/'collapse') 同一份路径 */
+  var ICON_COLLAPSE = '<svg class="sh-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.6 5.4L8 12l6.6 6.6"/><path d="M18.8 5.4L12.2 12l6.6 6.6"/></svg>';
+  var ICON_EXPAND = '<svg class="sh-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.4 5.4L16 12l-6.6 6.6"/><path d="M5.2 5.4L11.8 12l-6.6 6.6"/></svg>';
+
+  function initCollapsed() {
+    if (!side || isMobile()) return;
+    var stored = readStored();
+    if (stored === '1') { applyCollapsed(true, false); return; }
+    if (stored === '0') { applyCollapsed(false, false); return; }
+    /* 未记忆过：矮屏（≤860px 高）默认收起，桌面默认展开 */
+    applyCollapsed(window.innerHeight <= NARROW_H, false);
+  }
+
+  if (collapseBtn) {
+    collapseBtn.addEventListener('click', function () {
+      var next = !(side && side.classList.contains('is-collapsed'));
+      applyCollapsed(next, true);
+    });
+  }
+
+  /* ---------- ② 收起态 tooltip ---------- */
+  function ensureTip() {
+    if (tip) return tip;
+    tip = document.createElement('div');
+    tip.className = 'sh-tip';
+    tip.setAttribute('role', 'tooltip');
+    tip.hidden = true;
+    document.body.appendChild(tip);
+    return tip;
+  }
+  function hideTip() { if (tip) { tip.hidden = true; tip.textContent = ''; } }
+  function showTip(el) {
+    if (!side || !side.classList.contains('is-collapsed') || isMobile()) return;
+    var text = el.getAttribute('data-tip');
+    if (!text) return;
+    var t = ensureTip();
+    t.textContent = text;
+    t.hidden = false;
+    var r = el.getBoundingClientRect();
+    /* 先渲染再量宽，右缘留 12px 安全边距；超出视口则贴右 */
+    var tw = t.offsetWidth, th = t.offsetHeight;
+    var left = r.right + 10;
+    if (left + tw > window.innerWidth - 12) left = Math.max(8, window.innerWidth - 12 - tw);
+    var top = r.top + (r.height - th) / 2;
+    t.style.left = Math.round(left) + 'px';
+    t.style.top = Math.round(Math.max(8, top)) + 'px';
+  }
+  if (side) {
+    side.addEventListener('mouseover', function (e) {
+      var item = e.target.closest ? e.target.closest('.sh-nav-item') : null;
+      if (item) showTip(item);
+    });
+    side.addEventListener('mouseout', function (e) {
+      var item = e.target.closest ? e.target.closest('.sh-nav-item') : null;
+      if (item) hideTip();
+    });
+    side.addEventListener('focusin', function (e) {
+      var item = e.target.closest ? e.target.closest('.sh-nav-item') : null;
+      if (item) showTip(item);
+    });
+    side.addEventListener('focusout', hideTip);
+    side.addEventListener('scroll', hideTip);
+  }
+  window.addEventListener('resize', hideTip);
+
+  /* ---------- ③ 移动端抽屉 ---------- */
+  function drawerOpen() { return document.body.classList.contains('sh-drawer-open'); }
+  function setDrawer(open) {
+    if (!side) return;
+    document.body.classList.toggle('sh-drawer-open', !!open);
+    side.classList.toggle('is-open', !!open);
+    if (scrim) { if (open) scrim.removeAttribute('hidden'); else scrim.setAttribute('hidden', ''); }
+    for (var i = 0; i < burgers.length; i++) burgers[i].setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) {
+      /* 焦点移入抽屉：优先当前项，其次第一个可点条目 */
+      var target = side.querySelector('.sh-nav-item.is-active') || side.querySelector('.sh-nav-item');
+      if (target) { try { target.focus({ preventScroll: true }); } catch (e) { target.focus(); } }
+    } else if (burgers.length && isMobile()) {
+      try { burgers[0].focus({ preventScroll: true }); } catch (e) { /* 忽略 */ }
+    }
+    hideTip();
+  }
+  for (var bi = 0; bi < burgers.length; bi++) {
+    (function (btn) {
+      btn.addEventListener('click', function () { setDrawer(!drawerOpen()); });
+    })(burgers[bi]);
+  }
+  if (scrim) scrim.addEventListener('click', function () { setDrawer(false); });
+  if (drawerClose) drawerClose.addEventListener('click', function () { setDrawer(false); });
+  if (side) side.addEventListener('click', function (e) {
+    /* 选中条目即关闭抽屉（导航是真实 <a href> 跳转，这里只负责收起抽屉） */
+    if (e.target.closest && e.target.closest('.sh-nav-item')) setDrawer(false);
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && drawerOpen()) setDrawer(false);
+  });
+  var mq = window.matchMedia ? window.matchMedia('(max-width: ' + MOBILE_W + 'px)') : null;
+  function onBpChange() {
+    if (!isMobile() && drawerOpen()) setDrawer(false);
+    hideTip();
+  }
+  if (mq) {
+    if (mq.addEventListener) mq.addEventListener('change', onBpChange);
+    else if (mq.addListener) mq.addListener(onBpChange);
+  } else {
+    window.addEventListener('resize', onBpChange);
+  }
+
+  /* ---------- ④ 用户菜单：点击外部自动收起 ---------- */
+  var menu = byId('sUserMenu');
+  if (menu) {
+    document.addEventListener('click', function (e) {
+      if (menu.open && !menu.contains(e.target)) menu.open = false;
+    });
+    menu.addEventListener('keydown', function (e) { if (e.key === 'Escape') menu.open = false; });
+  }
+
+  /* ---------- 顶部状态区工具（页面脚本可选用）----------
+     setShellSim(true/false)：显示/隐藏「模拟演示」徽章（serial 模式必须隐藏，不伪装）
+     setShellConn(state, text)：ok / warn / error / sim / idle
+     setShellBell(n)：待处置报警数（0 时隐藏红点） */
+  window.BGShell = {
+    setShellSim: function (isSim) {
+      var el = byId('sSimBadge');
+      if (el) { if (isSim) el.removeAttribute('hidden'); else el.setAttribute('hidden', ''); }
+    },
+    setShellConn: function (state, text) {
+      var el = byId('shConn');
+      if (!el) return;
+      el.setAttribute('data-state', state || 'idle');
+      var t = byId('shConnText');
+      if (t && text) t.textContent = text;
+    },
+    setShellBell: function (n) {
+      var dot = byId('sBellDot'), num = byId('sBellNum');
+      var count = Number(n) || 0;
+      if (num) {
+        num.textContent = count > 99 ? '99+' : String(count);
+        if (count > 0) num.removeAttribute('hidden'); else num.setAttribute('hidden', '');
+      }
+      if (dot) { if (count > 0) dot.removeAttribute('hidden'); else dot.setAttribute('hidden', ''); }
+    },
+    isDrawerOpen: drawerOpen,
+    isCollapsed: function () { return !!(side && side.classList.contains('is-collapsed')); }
+  };
+
+  function boot() { initCollapsed(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
+{%- endmacro %}

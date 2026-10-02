@@ -1,420 +1,929 @@
+{# 共享骨架宏：侧栏 / 顶栏 / 抽屉（唯一来源 templates/_shell.html，禁止把菜单复制到各页） #}
+{% import "_shell.html" as shell %}
 <!DOCTYPE html>
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <meta name="theme-color" content="#07121f">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>桥体卫士 — 桥梁结构健康监测大屏</title>
-  <script src="/static/echarts.min.js"></script>
+  <title>3D 监测 - 桥体卫士</title>
+  <meta name="theme-color" content="#ffffff">
+  <!-- 内联 SVG 图标（data URI，绿色版）：避免浏览器探测 /favicon.ico 产生 404，本身不引外部资源 -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ffffff'/%3E%3Cpath d='M5 23h22M5 23c3-6 7.5-9 11-9s8 3 11 9M16 14V7M9 7h14' fill='none' stroke='%2316a34a' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <!-- 手机端取消 3D 界面：本页是 3D 独占页，≤768px 视口只做一件事——立刻 replace 到 /trend。
+       必须是同步脚本且排在最前面，才能在 three-boot.js / mount.js 开始加载之前跳走，
+       手机端不会白下载 655KB 的 /static/vendor/three.module.min.js，也不会闪出 3D 画布。
+       服务端第一层见 app.py 的 dashboard 视图（真实手机 UA 直接 302 → /trend）。
+       桌面端（>768px）本文件直接 return，页面与改造前完全一致。 -->
+  <script src="/static/js/mobile-redirect.js"></script>
+  <!-- 本地 three.js 引导（必须在任何 type="module" 之前：importmap 需在模块解析前注入）
+       离线可用：three.js r160 与 OrbitControls 已本地化到 /static/vendor/，CDN 只在本地失败时兜底 -->
+  <script src="/static/js/three-boot.js"></script>
   <link rel="stylesheet" href="/static/app.css">
+  {# 共享骨架样式（侧栏/顶栏/抽屉），全站只有 _shell.html 一份定义 #}
+  {{ shell.shell_head() }}
   <style>
-    body { padding: 12px; position: relative; }
-    /* 桥梁线稿背景（低透明，数字孪生氛围） */
-    .bridge-bg {
-      position: fixed; inset: 0; z-index: 0; pointer-events: none;
-      background: url('/static/bridge.svg') no-repeat center bottom / 100% auto;
-      opacity: .10;
+    /* ============================================================
+       /dashboard —— 3D 独占首页（P1）
+       ------------------------------------------------------------
+       整页只保留四样东西：
+         ① 全幅 3D 桥梁画布（唯一主角，高度铺满可视区）
+         ② 画布顶部极简指标带（风险等级 / 当前指标 / 阈值 / 变化率 / 连接状态）
+         ③ 场景工具条（视角预设 全桥·主跨·桥塔·峡谷·桥面 / 放大缩小 / 复位 / 自动旋转 /
+            结构线框 / 测点标注三档）—— 由 static/js/twin/hud.js 生成，本页只负责把它
+            停靠在画布底边（hud.js 不改）
+         ④ 模拟演示条（仅 DATA_SOURCE=sim 时显示，含水印与六场景切换）
+       已搬走、不在此页：趋势图/仪表盘/迷你图 → /trend；报警队列/跑马灯/分级环形 → /alarms；
+       设备健康度/系统运行/心跳 → /device；参数表单/审计/清空入口 → /settings；历史导出 → /history
+       ============================================================ */
+    :root { --hero-top: 62px; --sim-h: 0px;
+      /* 3D 浅色主题的渲染器 clearColor（static/js/twin/theme.js 的 light.clear）。
+         画布底色与页面底色必须同值，否则桥体边缘会出现一圈可见的色差接缝。
+         单一改动点：主题若调整 clearColor，只改这一处即可。 */
+      --twin-clear: #f2f5f7; }
+    body.has-sim-strip { --sim-h: 48px; }
+
+    /* 画布霸屏：桌面端固定高度铺满工具栏与模拟条之间的全部可视区 */
+    .hero { position: relative; flex: 1 1 auto; min-height: 320px;
+      height: calc(100vh - var(--hero-top) - var(--sim-h));
+      background: var(--twin-clear, #f2f5f7); overflow: hidden; }
+    .hero-canvas { position: absolute; inset: 0; }
+    /* 场景舞台：Mount 的 7 个 id 链一个都没改（twinStage > twinCanvas + twinLabels + twinHud + twinStatus） */
+    .hero-canvas .scene { position: absolute; inset: 0; overflow: hidden; }
+    .hero-canvas .twin-stage { position: absolute; inset: 0; overflow: hidden; }
+    /* app.css 的 @media (max-width:1100px) 把 .twin-stage 钉在 320px（上一版「窄屏回退为定高块」
+       的布局）。本页画布高度由 .hero-canvas 决定，769~1100px 区间会因此在画布下方留一条空带
+       （实测 844×390 全屏时 320 vs 390，差 70px，工具条浮在空带上）。本规则在 app.css 之后加载、
+       特异性也更高，覆盖它并保留 app.css 里 .twin-canvas 的 inset:0。 */
+    .hero-canvas .twin-stage { height: 100%; min-height: 0; }
+    .hero-canvas .twin-canvas { position: absolute; inset: 0; }
+    .hero-canvas .twin-canvas canvas { display: block; width: 100%; height: 100%;
+      outline: none; cursor: grab; pointer-events: auto; touch-action: none; }
+    .hero-canvas .twin-canvas canvas:active { cursor: grabbing; }
+    .hero-canvas .twin-labels { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+    /* HUD 容器撑满舞台但整块不吃指针事件：只放开真正可点的按钮，
+       鼠标落在空白处仍可直接拖拽旋转 / 滚轮缩放桥体 */
+    .hero-canvas .twin-hud { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+    .hero-canvas .twin-hud .th-btn { pointer-events: auto; }
+    .hero-canvas .th-presets,
+    .hero-canvas .th-zooms,
+    .hero-canvas .th-toggles { pointer-events: none; }
+
+    /* 场景工具条：hud.js 生成的 .twin-hud-view 从右上角改停靠到画布底边居中 */
+    .hero-canvas .twin-hud-view {
+      left: 50%; right: auto; top: auto; bottom: 14px; transform: translateX(-50%);
+      align-items: center; flex-direction: row; flex-wrap: wrap; justify-content: center;
+      gap: 8px; width: max-content; max-width: calc(100% - 24px); height: max-content;
+      max-height: calc(100% - 28px);
     }
-    .page { position: relative; z-index: 1; }
-    .full { grid-column: 1 / -1; }
-    /* 报警行可点击聚焦 */
-    #alarmTable tr { cursor: pointer; transition: background .12s; }
-    #alarmTable tr:hover { background: rgba(63,208,255,.05); }
-    .alarm-detail .d-meta { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 6px; }
-    .d-meta .tag { padding: 3px 10px; border-radius: 6px; font-size: 12px; background: rgba(18,48,82,.6); border: 1px solid var(--line); color: var(--text); }
-    .d-meta .tag b { color: var(--accent); }
-    .d-actions { margin-top: 10px; display: flex; gap: 8px; }
+    /* 桥型信息卡与交互提示：本页不常驻（会压住桥体；且这一版 3D 仍是深色，白底文字块很扎眼）。
+       旧 app.css 靠 #bigscreen 作用域隐藏它们，首页不再有 #bigscreen，必须在页面里显式隐藏：
+       .twin-hud 容器是 inset:0，信息卡只写了 left/top → bottom 被解析为 0，整块被拉成
+       canvas 同高的大白板盖住半个画布（实测 1200×790 的 rgba(255,255,255,.88) 面板）。
+       全屏观看（body.view-3d-only）时才把信息卡交还给用户，与改造前的行为一致。 */
+    .hero-canvas .twin-hud-info,
+    .hero-canvas .twin-hud-hint { visibility: hidden; opacity: 0; pointer-events: none; }
+    body.view-3d-only .hero-canvas .twin-hud-info { visibility: visible; opacity: 1; }
+    .hero-canvas .twin-hud-info { left: 10px; top: 10px; right: auto; bottom: auto;
+      width: 198px; height: max-content; }
+    .hero-canvas .twin-hud-detail { left: 10px; bottom: 78px; top: auto; right: auto; height: max-content; }
+    .hero-canvas .twin-hud-detail:not(.open) { visibility: hidden; }
+    .hero-canvas .twin-hud-detail.open { pointer-events: auto; }
+    .hero-canvas .th-presets, .hero-canvas .th-zooms, .hero-canvas .th-toggles {
+      display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+    .hero-canvas .th-presets { padding-right: 8px; border-right: 1px solid rgba(148, 163, 184, .35); }
+    .hero-canvas .th-mode-tag { order: 9; flex-basis: 100%; text-align: center; background: transparent; }
+    /* 工具条按钮：白底卡片风格，hover/选中用绿色系（P2 会把 3D 本体也改成浅色） */
+    .hero-canvas .th-btn {
+      font: inherit; font-size: 12px; cursor: pointer; color: var(--text, #1f2937);
+      padding: 7px 12px; border-radius: 8px; letter-spacing: .02em;
+      background: rgba(255, 255, 255, .92); border: 1px solid var(--border, #e5e8eb);
+      box-shadow: 0 1px 2px rgba(16, 24, 40, .06); backdrop-filter: blur(6px);
+      transition: color .15s, border-color .15s, background .15s; }
+    .hero-canvas .th-btn:hover { color: var(--accent, #16a34a);
+      border-color: var(--accent-border, rgba(22, 163, 74, .34)); }
+    .hero-canvas .th-btn.on { color: #fff; font-weight: 600; border-color: var(--accent, #16a34a);
+      background: var(--accent, #16a34a); box-shadow: 0 2px 6px rgba(22, 163, 74, .28); }
+    .hero-canvas .th-btn-zoom { min-width: 52px; text-align: center; }
+    .hero-canvas .th-mode-tag { font-size: 11px; color: var(--muted, #6b7280); }
+
+    /* ---- ② 画布顶部极简指标带（5 项，横向，可换行） ---- */
+    .metric-strip {
+      position: absolute; left: 14px; right: 14px; top: 12px; z-index: 6;
+      display: flex; flex-wrap: wrap; gap: 8px; pointer-events: none;
+    }
+    .metric-strip .ms-item {
+      flex: 0 1 auto; min-width: 104px; padding: 7px 12px; border-radius: 10px;
+      background: rgba(255, 255, 255, .93); border: 1px solid var(--border, #e5e8eb);
+      box-shadow: 0 1px 3px rgba(16, 24, 40, .08); backdrop-filter: blur(6px);
+      display: flex; flex-direction: column; gap: 2px; line-height: 1.2;
+    }
+    .metric-strip .ms-k { font-size: 11px; color: var(--muted, #6b7280); letter-spacing: .04em; white-space: nowrap; }
+    .metric-strip .ms-v { font-size: 17px; font-weight: 700; color: var(--text-strong, #111827);
+      font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .metric-strip .ms-v small { font-size: 11px; font-weight: 600; color: var(--muted, #6b7280); margin-left: 4px; }
+    /* 风险等级用「色块 + 文字 + 图标」三重表达，色弱用户也能读（不许只靠颜色） */
+    .metric-strip .ms-item.ms-risk .ms-v { display: inline-flex; align-items: center; gap: 6px; }
+    .metric-strip .ms-item.ms-risk .ms-v i { font-style: normal; font-size: 12px; }
+    .metric-strip .ms-item.ms-risk[data-risk="normal"] { color: var(--ok, #15803d); }
+    .metric-strip .ms-item.ms-risk[data-risk="warn"]   { color: var(--warn, #b45309); }
+    .metric-strip .ms-item.ms-risk[data-risk="alarm"]  { color: var(--alarm, #c2410c); }
+    .metric-strip .ms-item.ms-risk[data-risk="crit"]   { color: var(--crit, #be123c); }
+    .metric-strip .ms-item.ms-risk[data-risk="offline"]{ color: var(--offline, #6b7280); }
+    .metric-strip .ms-item.ms-risk .ms-v { color: inherit; }
+    .metric-strip .ms-item.ms-risk[data-risk="normal"] .ms-v { color: var(--ok, #15803d); }
+    .metric-strip .ms-item.ms-risk[data-risk="warn"] .ms-v { color: var(--warn, #b45309); }
+    .metric-strip .ms-item.ms-risk[data-risk="alarm"] .ms-v { color: var(--alarm, #c2410c); }
+    .metric-strip .ms-item.ms-risk[data-risk="crit"] .ms-v { color: var(--crit, #be123c); }
+    .metric-strip .ms-item.ms-risk[data-risk="offline"] .ms-v { color: var(--offline, #6b7280); }
+    .metric-strip .ms-item.ms-risk[data-risk="crit"] { animation: msPulse 1.6s ease-in-out infinite; }
+    @keyframes msPulse { 0%, 100% { box-shadow: 0 1px 3px rgba(16,24,40,.08); }
+      50% { box-shadow: 0 0 0 3px rgba(190, 18, 60, .18); } }
+    .metric-strip .conn { background: none; }
+
+    /* 跨中测点读数：3D 投影定位，浮在指标带下方 */
+    .hero-canvas .scene-label {
+      position: absolute; left: 50%; top: 27%; transform: translateX(-50%);
+      display: flex; align-items: center; gap: 8px; z-index: 5; pointer-events: none;
+      padding: 4px 12px; border-radius: 8px; white-space: nowrap;
+      background: rgba(255, 255, 255, .93); border: 1px solid var(--border, #e5e8eb);
+      font-size: 12px; color: var(--text, #1f2937); box-shadow: 0 1px 3px rgba(16, 24, 40, .08); }
+    .hero-canvas .scene-label .sl-dot { width: 8px; height: 8px; border-radius: 50%;
+      background: var(--ok, #15803d); }
+    .hero-canvas .scene-label .sl-unit { color: var(--muted, #6b7280); font-size: 11px; }
+    .hero-canvas .scene-label #slValue { color: var(--text-strong, #111827); font-weight: 700;
+      font-variant-numeric: tabular-nums; }
+    body.labels-off .hero-canvas .scene-label { display: none; }
+
+    /* 三维状态提示（右下角，如实说明加载/降级原因） */
+    .hero-canvas .twin-status {
+      position: absolute; right: 12px; bottom: 12px; z-index: 7; pointer-events: none;
+      font-size: 11px; color: var(--muted, #6b7280); padding: 3px 9px; border-radius: 8px;
+      background: rgba(255, 255, 255, .9); border: 1px solid var(--border, #e5e8eb); }
+    .hero-canvas .twin-status.err { color: var(--crit, #be123c); }
+    .hero-canvas .twin-status.warn { color: var(--warn, #b45309); }
+    /* 窄屏（≤1100px）非全屏：工具条几乎横贯画布底部，状态条必须抬到工具条上方
+       （实测 1024×768 重叠 374×20、844×390 重叠 374×20）。≤768px 那段在文件后面，
+       同特异性下后者胜，会把它再改回 58px（手机工具条更矮）。
+       同时把状态条改成左锚 + 右侧留出 200px：右下角是性能角标的固定位置
+       （实测右下角原状态条与角标在 844×390 / 1024×768 下重叠）。 */
+    @media (max-width: 1100px) {
+      .hero-canvas .twin-status {
+        bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+        left: 10px; right: auto; max-width: calc(100% - 200px); }
+    }
+
+    /* WebGL 降级示意（不静默假装 3D 可用），具体原因由 #twinStatus 如实给出 */
+    .hero-canvas .scene-fallback { position: absolute; inset: 0; z-index: 3; display: flex;
+      flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px 26px; }
+    .hero-canvas .scene-fallback[hidden] { display: none; }
+    .hero-canvas .scene-fallback svg { width: auto; max-width: 92%; max-height: 58%; }
+    .hero-canvas .scene-fallback text { font-family: inherit; }
+    /* 降级时把同层 HUD / 测点标签一并收起，全屏只留 2D 线稿与原因文案 */
+    .hero-canvas .twin-stage:has(#twinCanvas[style*="display: none"]) .twin-hud,
+    .hero-canvas .twin-stage:has(#twinCanvas[style*="display: none"]) .twin-labels,
+    .hero-canvas .twin-stage:has(#twinCanvas[style*="display: none"]) .twin-status { display: none; }
+
+    /* ---- ④ 模拟演示条（仅 sim 模式显示，默认隐藏；水印必须醒目） ---- */
+    .sim-strip { display: none; flex-wrap: wrap; align-items: center; gap: 10px;
+      min-height: 48px; padding: 6px 14px;
+      padding-left: max(14px, env(safe-area-inset-left));
+      padding-right: max(14px, env(safe-area-inset-right));
+      background: #fffbeb; border-top: 1px solid rgba(180, 83, 9, .28); }
+    body.has-sim-strip .sim-strip { display: flex; }
+    .demo-banner { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700;
+      color: #b45309; white-space: nowrap; }
+    .demo-banner .tag { background: #b45309; color: #fff; font-size: 11px; padding: 2px 8px;
+      border-radius: 4px; font-weight: 800; letter-spacing: .06em; }
+    .demo-banner .wm-text { letter-spacing: .01em; }
+    .scenario-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+    .scenario-title { font-size: 12px; color: var(--muted, #6b7280); font-weight: 600; }
+    .scn-btn { min-height: 32px; padding: 5px 12px; border-radius: 8px; cursor: pointer;
+      font: inherit; font-size: 12px; color: var(--text, #1f2937); white-space: nowrap;
+      background: rgba(255, 255, 255, .9); border: 1px solid var(--border, #e5e8eb);
+      transition: background .15s, color .15s, border-color .15s; }
+    .scn-btn:hover { border-color: var(--accent-border, rgba(22, 163, 74, .34)); color: var(--accent, #16a34a); }
+    .scn-btn.active { background: var(--accent, #16a34a); border-color: var(--accent, #16a34a);
+      color: #fff; font-weight: 600; }
+    .scn-btn.offline-btn.active { background: var(--offline, #6b7280); border-color: var(--offline, #6b7280); }
+    .scenario-current { font-size: 12px; color: var(--muted, #6b7280); white-space: nowrap; }
+    .scenario-current b { color: var(--accent, #16a34a); }
+
+    /* ---- 轻量顶栏（本页不引入完整侧栏骨架：3D 要独占整屏） ---- */
+    .hero-top { flex: 0 0 auto; display: flex; align-items: center; gap: 14px; min-height: var(--hero-top);
+      padding: 9px 18px; padding-left: max(18px, env(safe-area-inset-left));
+      padding-right: max(18px, env(safe-area-inset-right));
+      background: var(--panel-solid, #fff); border-bottom: 1px solid var(--border, #e5e8eb); }
+    .hero-top .ht-brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    .hero-top .ht-mark { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 9px;
+      display: grid; place-items: center; color: #fff; background: var(--accent, #16a34a); }
+    .hero-top .ht-title { font-size: 17px; font-weight: 700; color: var(--text-strong, #111827); line-height: 1.2; }
+    .hero-top .ht-sub { font-size: 11.5px; color: var(--muted, #6b7280); }
+    .hero-top .ht-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .hero-top .fs-btn { font: inherit; font-size: 12.5px; cursor: pointer; padding: 7px 12px;
+      border-radius: 8px; color: var(--accent, #16a34a); background: #fff;
+      border: 1px solid var(--accent-border, rgba(22, 163, 74, .34)); white-space: nowrap; }
+    .hero-top .fs-btn:hover { background: var(--accent-soft, rgba(22, 163, 74, .08)); }
+    .hero-top .conn { font-size: 12.5px; color: var(--muted, #6b7280); white-space: nowrap; }
+    .hero-top .conn.error { color: var(--crit, #be123c); }
+    .hero-top .nav-link { font-size: 12.5px; padding: 6px 10px; border-radius: 8px;
+      border: 1px solid var(--border, #e5e8eb); color: var(--text, #1f2937); }
+    .hero-top .nav-link.danger { color: var(--crit, #be123c); }
+
+    /* ---- 全屏观看：隐藏全部数据件，只留 3D 桥体 ----
+       ⚠️ P2 修复（实测根因，禁止改回 visibility 隐藏）：
+       旧实现用 visibility 隐藏 .hero-top/.sh-side/.metric-strip/.sim-strip —— 这些元素
+       **仍然占位**，于是全屏反而比不全屏更难看（headless Edge 实测，2560×1600 / 390×844 / 844×390）：
+         · 桌面：.hero 从 y=62 开始却写成 height:100vh → 画布底边 1662 > 视口 1600，
+           底部工具条被裁掉 62px；又因 body{overflow:hidden} 用户无法滚动去看它；
+         · 手机竖屏：.hero-top 156px + .metric-strip 154px 仍占位 → 画布被顶到 y=310，
+           而 .hero{height:auto} 让 .hero-canvas 只剩 46vh=388px，屏幕上下各留一大片空白；
+         · 手机横屏：.sh-side 仍占 64px 宽，且 .twin-stage 被 app.css 的 ≤1100px 规则钉在 320px
+           （.hero 已经是 390px）→ 左侧 + 底部各一条空带，工具条浮在空带上。
+       修法：① 全屏态 display:none 彻底零占位；② .hero 改成 fixed 铺满视口。
+       为什么不用 height:100vh：iOS Safari 的 100vh 包含地址栏高度，实测会溢出被裁；
+       这里用 dvh（动态视口高度）并在前面保留 vh 回退，老浏览器退化成 100vh 也不会比旧版更差。 */
+    body.view-3d-only .sh-side,
+    body.view-3d-only .sh-topbar,
+    body.view-3d-only .hero-top,
+    body.view-3d-only .metric-strip,
+    body.view-3d-only .sim-strip,
+    body.view-3d-only .sh-content { display: none !important; }
+    body.view-3d-only { overflow: hidden; }
+    /* 侧栏被 display:none 后 .sh-layout/.sh-main 的 flex 布局仍会撑高页面，这里一并归零 */
+    body.view-3d-only .sh-layout,
+    body.view-3d-only .sh-main { display: block; min-height: 0; }
+    body.view-3d-only .hero {
+      position: fixed; left: 0; right: 0; top: 0; z-index: 40;
+      height: 100vh; height: 100dvh; min-height: 0; margin: 0; padding: 0; border-radius: 0;
+      /* 3D 浅色主题的 clearColor（twin 追加片段里的 --twin-clear）→ 画布与页面底色无缝 */
+      background: var(--twin-clear, #f2f5f7);
+    }
+    body.view-3d-only .hero-canvas { position: absolute; inset: 0; height: auto; min-height: 0; }
+    /* app.css 在 @media (max-width:1100px) 里给 .twin-stage 写死了 height:320px（上一版窄屏回退
+       布局）。全屏态必须让舞台与画布 100% 铺满，否则画布下方会浮出一条空带（实测 844×390 时
+       320px vs 390px 差 70px）。这里用 !important 压住 app.css，避免特定性打架。 */
+    body.view-3d-only .hero-canvas .twin-stage,
+    body.view-3d-only .hero-canvas .twin-canvas { height: 100% !important; min-height: 0 !important; }
+    /* 工具条在全屏态贴底居中（原规则只在 #bigscreen 作用域里，本页需要自己兜住） */
+    body.view-3d-only .hero-canvas .twin-hud-view {
+      opacity: 1; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); }
+    /* 全屏时信息卡 / 详情卡 / 状态条都抬高到工具条之上，避免被工具条压住
+       （实测 1024×768 全屏：工具条 y=696..754 与状态条 y=734..756 重叠 368×20；
+        844×390 全屏：工具条 y=318..376 与状态条 y=356..378 重叠 374×20） */
+    body.view-3d-only .hero-canvas .twin-hud-detail {
+      bottom: calc(120px + env(safe-area-inset-bottom, 0px)); }
+    /* 状态条改左锚：右下角让给性能角标（hud.js 的 .twin-perf 锚在 right:10/bottom:78），
+       两者原本重叠 164×23（实测 2560×1600 全屏、1024×768 全屏、844×390 全屏各一次）。
+       max-width 留出右侧 190px 给角标，避免窄屏（390px）时横向又撞上。 */
+    body.view-3d-only .hero-canvas .twin-status {
+      position: absolute; left: 10px; right: auto; bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+      margin: 0; max-width: calc(100% - 200px); }
+    .sh-side, .hero-top, .metric-strip, .sim-strip, .sh-content { transition: opacity .2s ease; }
+    #fsExit {
+      position: fixed; z-index: 60; display: none; cursor: pointer;
+      /* 手机全屏（刘海屏）避让安全区：不避让时按钮会压在状态栏图标下点不到 */
+      top: max(14px, env(safe-area-inset-top, 0px));
+      right: max(16px, env(safe-area-inset-right, 0px));
+      font: inherit; font-size: 13px; padding: 8px 14px; border-radius: 8px;
+      color: var(--text-strong, #111827); background: rgba(255, 255, 255, .94);
+      border: 1px solid var(--accent, #16a34a); box-shadow: 0 4px 14px rgba(16, 24, 40, .14); }
+    body.view-3d-only #fsExit { display: block; }
+
+    /* ---- 全屏态的手机端细化（≤768px）----
+       旧规则 `body.view-3d-only .hero { height: auto; }` 是用户反馈「全屏后显示很奇怪」的
+       直接原因之一：画布只剩 46vh，其余是空白。这里改成 dvh 铺满，并把浮层重新排布：
+         · 跨中读数（#sceneLabel）左对齐，避免与右上角「退出全屏」按钮重叠；
+         · 信息卡移到读数下方、限宽限高可滚动（它的内容有 278px 高，手机全屏下会盖住整个画布）；
+         · 状态条从「文档流内联块」改成贴底的绝对定位小条（原来它占在画布顶部，与读数打架）。 */
+    @media (max-width: 768px) {
+      body.view-3d-only .hero { height: 100vh; height: 100dvh; }
+      /* ⚠️ 必须 animation:none：app.css 给 .scene-label 挂了 `animation: labelIn .8s … both`，
+         动画的 transform 关键帧会**压过**静态 transform —— 实测只写 transform:none 时标签
+         仍带 translateX(-50%)，跑到 x=-94（半个标签在屏幕外）。 */
+      body.view-3d-only .hero-canvas .scene-label {
+        left: 10px; right: auto; transform: none; animation: none !important; top: 8px;
+        max-width: calc(100% - 136px); white-space: normal; }
+      body.view-3d-only .hero-canvas .twin-hud-info {
+        left: 10px; top: 44px; right: auto; width: min(52vw, 196px);
+        max-height: 32%; overflow: auto; }
+      body.view-3d-only .hero-canvas .twin-status {
+        position: absolute; left: 10px; right: auto; top: auto;
+        bottom: calc(66px + env(safe-area-inset-bottom, 0px)); margin: 0;
+        max-width: calc(100% - 190px); text-align: left; }
+      body.view-3d-only .hero-canvas .twin-hud-view {
+        bottom: calc(8px + env(safe-area-inset-bottom, 0px)); }
+      body.view-3d-only .hero-canvas .twin-hud-detail {
+        left: 10px; bottom: calc(122px + env(safe-area-inset-bottom, 0px)); max-width: 70vw; }
+    }
+    /* 平板 / 小笔记本（769~1100px）全屏：信息卡与工具条不打架 */
+    @media (min-width: 769px) and (max-width: 1100px) {
+      body.view-3d-only .hero-canvas .twin-hud-info { width: 176px; max-height: 42%; overflow: auto; }
+      body.view-3d-only .hero-canvas .twin-hud-view { max-width: calc(100% - 20px); }
+    }
+
+    /* ---- 手机端：不走定高霸屏，改文档流纵向滚动；画布定高 46~56vh ---- */
+    @media (max-width: 768px) {
+      body.sh-body .sh-main, body.sh-body .sh-content, body.sh-body .sh-page { min-height: 0; }
+      body.sh-body .sh-content { padding: 10px 12px calc(20px + env(safe-area-inset-bottom)); }
+      .hero { height: auto; min-height: 0; border-radius: 12px; }
+      /* 手机端画布定高 46vh（46~56vh 区间取小值，给工具条留位）。
+         ⚠️ HUD（工具条）是 hud.js 生成、挂在内层 .twin-hud（inset:0）上的绝对定位层，
+            它【无法】搬到画布外面（hud.js / mount.js 本轮不许改），所以：
+            · .hero-canvas 只负责 46vh 的可见画布；
+            · .hero 用 padding-bottom 预留工具条的高度（工具条贴在 .hero-canvas 底边之上，
+              视口 ≤768px 时按钮 44px 高 + 换行，实测约 148px，这里留 172px 余量）；
+            · 外层 .hero 的 padding 不影响内层 .hero-canvas 的 absolute inset（它相对 .hero-canvas 定位）。
+            这样既不会"工具条压住桥体"，也不会在画布下方留一条空白。 */
+      .hero { padding-bottom: 130px; }
+      .hero-canvas { position: relative; inset: auto; height: 46vh; min-height: 300px; }
+      .hero-canvas .scene, .hero-canvas .twin-stage { position: absolute; inset: 0; }
+      /* ⚠️ 旧 app.css 在 `@media (max-width: 1100px)` 里给 .twin-stage 写死了 height:320px +
+         min-height:300px（那是上一版"窄屏回退为文档流定高块"的布局）。本页的画布高度必须由
+         .hero-canvas 的 46vh 决定，否则手机端画布实际只有 320px（实测 320/844 = 0.379，
+         低于需求的 46vh≈0.46）。这里显式覆盖：height:100% + min-height:0，
+         并且本规则在文件里位于 app.css 之后，同特异性下后者胜。 */
+      .hero-canvas .twin-stage { height: 100%; min-height: 0; }
+      .hero-canvas .twin-canvas { position: absolute; inset: 0; height: 100%; min-height: 0; }
+      .metric-strip { position: static; left: auto; right: auto; top: auto;
+        padding: 8px 0 0; background: transparent; gap: 6px; }
+      .metric-strip .ms-item { flex: 1 1 45%; min-width: 45%; padding: 5px 9px; }
+      .metric-strip .ms-v { font-size: 15px; }
+      .metric-strip .ms-k { font-size: 10.5px; }
+      /* 工具条：手机端固定贴在画布底边（保持 absolute，不参与 .scene 内的文档流），
+         变成可横向滚动的单行 —— 换行会把高度撑到 148px 并叠到桥体上。 */
+      .hero-canvas .twin-hud-view { position: absolute; left: 0; right: 0; bottom: 8px; top: auto;
+        transform: none; width: auto; max-width: none; margin: 0; padding: 0 10px;
+        flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; justify-content: flex-start;
+        gap: 6px; -webkit-overflow-scrolling: touch; }
+      .hero-canvas .th-presets, .hero-canvas .th-zooms, .hero-canvas .th-toggles {
+        flex-wrap: nowrap; justify-content: flex-start; }
+      .hero-canvas .th-presets { border-right: none; padding-right: 0; }
+      .hero-canvas .th-btn { min-height: 44px; padding: 10px 13px; font-size: 13px; flex: 0 0 auto; }
+      .hero-canvas .th-mode-tag { display: none; }
+      /* 状态条：旧规则是 `position: static`（文档流内联块），它会停在画布顶端，
+         与同样停在画布顶端的跨中读数重叠 208×23（实测 390×844）。改成贴工具条上方的
+         绝对定位小条，既不再占画布顶部，也不会被工具条盖住。 */
+      .hero-canvas .twin-status {
+        position: absolute; left: 10px; right: auto; top: auto; margin: 0;
+        bottom: calc(58px + env(safe-area-inset-bottom, 0px));
+        max-width: calc(100% - 190px); text-align: left; display: block; }
+      .hero-canvas .scene-label { top: 10px; font-size: 11.5px; }
+      /* 工具条挪到画布外，画布本体靠 .hero-canvas 定高保证 46~56vh */
+      .hero { display: flex; flex-direction: column; }
+      .hero-canvas { order: 1; }
+      .hero .metric-strip { order: 0; }
+      .sim-strip { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px 12px; }
+      .demo-banner { white-space: normal; line-height: 1.45; font-size: 12px; }
+      .scenario-bar { margin-left: 0; gap: 6px; }
+      .scn-btn { min-height: 44px; padding: 10px 12px; font-size: 13px; }
+      .hero-top { flex-wrap: wrap; row-gap: 8px; padding: 9px 12px; }
+      .hero-top .ht-title { font-size: 15px; }
+      .hero-top .ht-right { width: 100%; flex-wrap: wrap; row-gap: 8px; }
+      .hero-top .fs-btn { min-height: 44px; }
+      /* 手机端隐藏顶栏的三个快捷入口：它们与抽屉菜单里的条目完全重复，
+         留着会让 .ht-right 溢出视口（实测 390 宽时 scrollWidth=480，横向滚动条）。
+         连接状态与「全屏观看」保留，是这一页真正需要的两个操作。 */
+      .hero-top .nav-link { display: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .metric-strip .ms-item.ms-risk[data-risk="crit"] { animation: none; }
+    }
+
+    /* ============================================================
+       P2 追加片段：3D 浅色主题皮肤（本页新增 CSS 的唯一集中位置）
+       ------------------------------------------------------------
+       为什么集中在这里、而不是改 app.css：
+         · P2 红线：app.css 的变量与既有规则一行都不动，只允许「twin 相关追加片段」新增 CSS；
+         · 3D HUD 的底色/文字色在 P1 已经改成白色浮层（app.css 第 1783 行起的浅色特例），
+           本轮 3D 本体由深色变浅色后，只有下面这几处需要收口。
+       需要收口的东西：
+         ① .hero 的底色 = 渲染器 clearColor（--twin-clear，见 :root），消除画布与页面的接缝；
+         ② 性能角标（hud.js 生成，类名 .twin-perf，见 .workbuddy/p2/CONTRACT.md §3.5）的
+            层级与手机端落点：右上角在全屏态被「退出全屏」按钮占用，所以手机全屏时角标改贴
+            右下、位于工具条之上；展开态左右各留 10px 并限高可滚动，不压住工具条与信息卡。
+            角标内部的浅色皮肤由 hud.js 自带（它自己注入样式，避免跨文件改 CSS）。
+         ③ 结构线框（LineBasicMaterial）的白底可读性由材质层负责（NormalBlending + 深色描边，
+            见 theme.js / scene.js），CSS 不参与，避免两处各改一半。
+       ============================================================ */
+    .hero-canvas .twin-perf { z-index: 6; }
+    /* 横屏/矮视口（高度 ≤560px）全屏：角标展开态限高，避免与居中的跨中读数重叠
+       （实测 844×390 全屏展开：面板 (514,109,320×203) 与读数 (316,105,212×26) 重叠 14×22；
+        限到 42% → 面板顶边 y=148 > 读数底边 131，留 9px 余量） */
+    @media (max-height: 560px) {
+      body.view-3d-only .hero-canvas .twin-perf.open { max-height: min(42%, 200px); }
+    }
+    @media (max-width: 768px) {
+      body.view-3d-only .hero-canvas .twin-perf {
+        left: auto; right: 10px; top: auto;
+        bottom: calc(66px + env(safe-area-inset-bottom, 0px));
+        max-width: calc(100% - 20px); }
+      body.view-3d-only .hero-canvas .twin-perf.open {
+        left: 10px; right: 10px;
+        /* 面板展开态必须避开左下角那两块常驻件（实测 390×844：
+           工具条占距底 8~52px、状态条占 66~118px、详情卡占 122px 起）→ 取 128px。
+           max-height 取 min(52%,300px)：844 高屏上展开盒占距底 128~428px，
+           正好落在信息卡（距底 522px 以上）下方，不互相压。 */
+        bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+        max-height: min(52%, 300px); overflow: auto; }
+    }
   </style>
 </head>
-<body>
+<body class="sh-body">
 
-<div class="bridge-bg"></div>
-<div class="page">
+{% import "_shell.html" as shell %}
 
-  <!-- ============ 顶部系统状态条 ============ -->
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#3fd0ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 18h18"/><path d="M3 18c2.5-4 6-6 9-6s6.5 2 9 6"/><path d="M12 12V6"/><path d="M6 6h12"/>
+<div class="sh-layout">
+
+  {{ shell.shell_sidebar('dashboard') }}
+
+  <div class="sh-main">
+
+    <!-- ============ 轻量顶栏：页面标题 + 副标题 + 连接状态 + 工具 ============
+         完整侧栏由 _shell.html 宏提供；本页顶栏只做页面级信息与工具入口。
+         手机端（≤768px）侧栏自动变抽屉，这里的 ☰ 与抽屉联动由 _shell.html 的内联脚本负责。 -->
+    <header class="hero-top">
+      <button class="sh-burger" id="sBurger" type="button" aria-label="打开菜单"
+              aria-controls="sSide" aria-expanded="false">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h16"/>
+        </svg>
+      </button>
+      <span class="ht-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 17h18"/><path d="M3 17c2.4-4.4 6-6.6 9-6.6s6.6 2.2 9 6.6"/>
+          <path d="M12 10.4V5"/><path d="M6.5 5h11"/>
         </svg>
       </span>
       <div>
-        <h1>桥体卫士 · 桥梁结构健康监测</h1>
-        <div class="sub">BRIDGE STRUCTURAL HEALTH MONITORING</div>
+        <div class="ht-title">3D 监测</div>
+        <div class="ht-sub">花江峡谷大桥三维数字孪生 · 缩尺模型受载变化模拟</div>
       </div>
-    </div>
-    <span class="source-badge" id="sourceBadge">数据源：--</span>
-    <span class="conn" id="connLight">● 运行 <span id="uptimeShow">--</span></span>
-    <a class="nav-link" href="/history">历史记录</a>
-    <a class="nav-link" href="/settings">设置</a>
-    <a class="nav-link danger" href="/logout">退出</a>
-  </header>
+      <div class="ht-right">
+        <span class="conn" id="connectionStatus" role="status">● 数据连接中…</span>
+        <button class="fs-btn" id="fsBtn" type="button" title="隐藏工具栏与指标带，仅观看 3D 桥体">全屏观看</button>
+        <a class="nav-link" href="/trend">实时趋势</a>
+        <a class="nav-link" href="/alarms">报警中心</a>
+        <a class="nav-link danger" href="/logout">退出</a>
+      </div>
+    </header>
 
-  <!-- 模拟演示水印（仅模拟模式显示，明确标注，不伪装真实硬件） -->
-  <div class="demo-banner" id="demoBanner" style="display:none">
-    <span class="tag">模拟</span>
-    模拟演示 · 非真实硬件数据 · 缩尺模型受载变化模拟
-  </div>
+    <!-- ============ ① 全幅 3D 画布（唯一主角） ============
+         容器 id 链沿用 mount.js 的 getElementById 结构，一个未改名：
+           twinStage > twinCanvas + twinLabels + twinHud + twinStatus
+         另有降级图 #sceneFallback 与跨中测点标签 #sceneLabel 同层
+         模型：花江峡谷大桥（主跨 1420m 双塔单跨钢桁梁悬索桥，桥面至水面 625m）
+         交互：左键拖拽旋转 / 滚轮缩放 / 右键平移 / 双击聚焦（OrbitControls，30fps 节流见 scene.js） -->
+    <section class="hero" id="hero">
+      <div class="hero-canvas">
+        <div class="scene" id="scene">
+          <div class="twin-stage" id="twinStage">
+            <div class="twin-canvas" id="twinCanvas"></div>
+            <div class="twin-labels" id="twinLabels" aria-hidden="true"></div>
+            <div class="twin-hud" id="twinHud"></div>
+            <div class="twin-status" id="twinStatus">三维场景加载中…</div>
+          </div>
 
-  <!-- 模拟场景切换面板（仅模拟模式显示） -->
-  <div class="scenario-bar" id="scenarioBar" style="display:none">
-    <span class="scenario-title">模拟场景</span>
-    <button class="scn-btn" data-scn="normal" onclick="setScenario('normal')">正常运行</button>
-    <button class="scn-btn" data-scn="warn" onclick="setScenario('warn')">预警</button>
-    <button class="scn-btn" data-scn="alarm" onclick="setScenario('alarm')">报警</button>
-    <button class="scn-btn" data-scn="critical" onclick="setScenario('critical')">严重报警</button>
-    <button class="scn-btn offline-btn" data-scn="offline" onclick="setScenario('offline')">设备离线</button>
-    <button class="scn-btn" data-scn="recover" onclick="setScenario('recover')">设备恢复</button>
-    <span class="scenario-current">当前：<b id="scenarioCurrent">正常运行</b></span>
-  </div>
+          <!-- 三维不可用时的降级示意（默认隐藏，绝不静默假装 3D 可用）
+               P2：降级图也是「浅色可读版」——线稿用统一浅色风险色（正常档 #15803d，白底 5.02:1），
+               次要杆件用中性灰 #4b5563 压到 60% 不透明度，细线仍满足非文本 3:1 的最低要求；
+               说明文字统一 #6b7280（4.83:1），不再用 #9ca3af（仅 2.6:1，11px 下读不清）。 -->
+          <div class="scene-fallback" id="sceneFallback" hidden>
+            <svg viewBox="0 0 640 250" fill="none" aria-label="桥梁结构示意（降级二维示意图）">
+              <g stroke="#15803d" stroke-width="1.6" stroke-opacity=".85" fill="none">
+                <path d="M30 152 H610" /><path d="M30 160 H610" stroke="#4b5563" stroke-opacity=".6" />
+                <path d="M180 34 V152" stroke-width="3" /><path d="M460 34 V152" stroke-width="3" />
+                <path d="M180 36 C 240 90, 400 90, 460 36" />
+                <path d="M180 36 L34 152" /><path d="M460 36 L606 152" />
+                <g stroke="#4b5563" stroke-opacity=".6">
+                  <path d="M240 76 V152" /><path d="M300 88 V152" /><path d="M360 88 V152" /><path d="M420 76 V152" />
+                </g>
+              </g>
+              <text x="320" y="196" text-anchor="middle" fill="#6b7280" font-size="13">
+                三维场景不可用，已回退为二维结构示意（具体原因见状态提示）
+              </text>
+              <text x="320" y="216" text-anchor="middle" fill="#6b7280" font-size="11">
+                数据采集、规则报警与处置闭环功能不受影响
+              </text>
+            </svg>
+          </div>
 
-  <!-- ============ 核心 KPI 行 ============ -->
-  <div class="kpi">
-
-    <!-- 当前风险 -->
-    <div class="panel">
-      <span class="corner tl"></span><span class="corner br"></span>
-      <h3>当前风险</h3>
-      <div class="risk-card risk-normal" id="riskCard">
-        <div class="risk-label" id="riskLabel"><span class="state-icon">●</span><span>--</span></div>
-        <div class="risk-value"><span id="strainNum">--</span><span class="risk-unit" id="strainUnit">{{ unit }}</span></div>
-        <div class="risk-sub">
-          <span>阈值 <b id="thresholdShow">{{ threshold }}</b></span>
-          <span>变化率 <b id="rateShow">--</b></span>
+          <!-- 跨中测点数值（HTML 叠加层，数值全部来自 /api/data；坐标由 3D 场景每帧投影） -->
+          <div class="scene-label" id="sceneLabel">
+            <span class="sl-dot" id="slDot"></span>
+            <span class="sl-name">跨中测点 · <span id="slValue">--</span> <span class="sl-unit">{{ unit }}</span></span>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- 设备健康度 -->
-    <div class="panel">
-      <span class="corner tl"></span><span class="corner br"></span>
-      <h3>设备健康度</h3>
-      <div class="kv-row"><span class="k">设备标识</span><span class="v" id="healthDevice">--</span></div>
-      <div class="kv-row"><span class="k">数据来源</span><span class="v" id="healthSource">--</span></div>
-      <div class="kv-row"><span class="k">连接状态</span><span class="v"><span class="health-state state-unknown" id="healthState">--</span></span></div>
-      <div class="kv-row"><span class="k">最近心跳</span><span class="v" id="healthHeartbeat">--</span></div>
-      <div class="kv-row"><span class="k">最近异常</span><span class="v" id="healthError">无</span></div>
-    </div>
+      <!-- ============ ② 画布顶部极简指标带（5 项，横向，可换行） ============
+           全部数值来自 /api/data；设备离线时一律显示 -- 并在连接状态里说明原因 -->
+      <div class="metric-strip" id="metricStrip">
+        <div class="ms-item ms-risk" id="msRisk" data-risk="offline">
+          <span class="ms-k">风险等级</span>
+          <span class="ms-v"><i id="msRiskIcon" aria-hidden="true">●</i><span id="riskLabel">--</span></span>
+        </div>
+        <div class="ms-item">
+          <span class="ms-k">当前应变指标</span>
+          <span class="ms-v"><span id="strainNum">--</span><small id="strainUnit">{{ unit }}</small></span>
+        </div>
+        <div class="ms-item">
+          <span class="ms-k">报警阈值</span>
+          <span class="ms-v" id="thresholdShow">--</span>
+        </div>
+        <div class="ms-item">
+          <span class="ms-k">变化率</span>
+          <span class="ms-v" id="rateShow">--</span>
+        </div>
+        <div class="ms-item">
+          <span class="ms-k">连接状态</span>
+          <span class="ms-v" id="linkState">--</span>
+        </div>
+      </div>
+    </section>
 
-    <!-- 待处置报警 -->
-    <div class="panel">
-      <span class="corner tl"></span><span class="corner br"></span>
-      <h3>待处置报警</h3>
-      <div class="pending-num ok" id="pendingNum">0</div>
-      <div class="pending-label">未处理报警条数</div>
-      <div class="stat-grid">
-        <div class="stat-item"><div class="n c-warn" id="cntWarn">0</div><div class="t">预警</div></div>
-        <div class="stat-item"><div class="n c-alarm" id="cntAlarm">0</div><div class="t">报警</div></div>
-        <div class="stat-item"><div class="n c-crit" id="cntCrit">0</div><div class="t">严重报警</div></div>
+    <!-- ============ ④ 模拟演示条（仅 DATA_SOURCE=sim 时显示） ============
+         水印与六场景切换由 /api/data 的 is_simulated / source 字段驱动；
+         serial 模式下整条隐藏（.has-sim-strip 不加），绝不把真实设备说成模拟 -->
+    <div class="sim-strip" id="simStrip">
+      <div class="demo-banner" id="demoBanner">
+        <span class="tag">模拟</span>
+        <span class="wm-text">模拟演示 · 非真实硬件数据 · 缩尺模型受载变化模拟</span>
+      </div>
+      <div class="scenario-bar" id="scenarioBar">
+        <span class="scenario-title">模拟场景</span>
+        <button class="scn-btn" data-scn="normal" onclick="setScenario('normal')">正常运行</button>
+        <button class="scn-btn" data-scn="warn" onclick="setScenario('warn')">预警</button>
+        <button class="scn-btn" data-scn="alarm" onclick="setScenario('alarm')">报警</button>
+        <button class="scn-btn" data-scn="critical" onclick="setScenario('critical')">严重报警</button>
+        <button class="scn-btn offline-btn" data-scn="offline" onclick="setScenario('offline')">设备离线</button>
+        <button class="scn-btn" data-scn="recover" onclick="setScenario('recover')">设备恢复</button>
+        <span class="scenario-current">当前：<b id="scenarioCurrent">正常运行</b></span>
       </div>
     </div>
 
-    <!-- 系统运行 -->
-    <div class="panel">
-      <span class="corner tl"></span><span class="corner br"></span>
-      <h3>系统运行</h3>
-      <div class="kv-row"><span class="k">运行时长</span><span class="v num" id="uptimeNum">--</span></div>
-      <div class="kv-row"><span class="k">采集周期</span><span class="v num" id="intervalShow">-- 秒</span></div>
-      <div class="kv-row"><span class="k">累计采样</span><span class="v num" id="sampleCount">0 次</span></div>
-      <div class="kv-row"><span class="k">最后采样</span><span class="v num" id="lastSampleTime">--</span></div>
-      <div class="kv-row"><span class="k">数据源状态</span><span class="v" id="sensorStatus">--</span></div>
-    </div>
+    <!-- 页脚口径说明（相对应变指标，无量纲，不声称工程级精度） -->
+    <footer class="sh-content" style="padding-top:0">
+      <p style="font-size:11.5px;color:var(--faint,#9ca3af);line-height:1.7;margin:0">
+        单位口径：{{ unit }}（相对应变指标，无量纲，非工程微应变）· 数据全部来自 <b>/api/data</b> ·
+        最近刷新 <span id="footLast">--</span> ·
+        模拟数据一律带「模拟演示 · 非真实硬件数据 · 缩尺模型受载变化模拟」水印，不伪装真实硬件数据。
+      </p>
+    </footer>
 
-  </div>
+  </div><!-- /.sh-main -->
+</div><!-- /.sh-layout -->
 
-  <!-- ============ 图表行 ============ -->
-  <div class="charts">
-    <div class="panel">
-      <span class="corner tl"></span><span class="corner br"></span>
-      <h3>桥梁受载趋势 <span class="conn idle" id="chartConn" style="margin-left:6px"></span></h3>
-      <div id="chart"></div>
-    </div>
-    <div class="panel">
-      <span class="corner tl"></span><span class="corner br"></span>
-      <h3>阈值仪表</h3>
-      <div id="gauge"></div>
-    </div>
-  </div>
-
-  <!-- ============ 报警处置队列 ============ -->
-  <div class="panel full">
-    <span class="corner tl"></span><span class="corner br"></span>
-    <h3>报警处置队列
-      <span style="margin-left:auto;display:flex;gap:8px">
-        <button class="btn btn-ghost" onclick="clearData()">清除数据</button>
-        <button class="btn btn-red" onclick="clearAlarms()">清除报警</button>
-      </span>
-    </h3>
-    <table>
-      <thead><tr>
-        <th>时间</th><th>应变指标</th><th>等级</th><th>规则</th><th>原因</th><th>状态</th><th>操作</th>
-      </tr></thead>
-      <tbody id="alarmTable"></tbody>
-    </table>
-    <!-- 报警详情（点击行聚焦原因/规则/触发值/状态） -->
-    <div class="alarm-detail" id="alarmDetail"></div>
-    <p class="conn" id="connectionStatus" style="margin-top:8px">● 数据连接正常</p>
-  </div>
-
-</div>
-
-<!-- 移动端底部导航（窄屏显示，类小程序体验） -->
-<nav class="mobile-nav">
-  <a href="/dashboard" class="active"><span class="m-ico">🏠</span><span>首页</span></a>
-  <a href="/history"><span class="m-ico">📜</span><span>历史</span></a>
-  <a href="/settings"><span class="m-ico">⚙</span><span>设置</span></a>
-  <a href="/logout" class="danger"><span class="m-ico">⏻</span><span>退出</span></a>
-</nav>
+<!-- 全屏观看时的浮动退出按钮（仅 body.view-3d-only 期间显示；ESC / F11 退出由 fullscreenchange 兜住） -->
+<button id="fsExit" type="button" title="退出全屏观看（ESC）">✕ 退出全屏</button>
 
 <script>
-  const CSRF_TOKEN = {{ csrf_token|tojson }};
-  const UNIT = {{ unit|tojson }};
-  const INITIAL_THRESHOLD = {{ threshold }};
-  const gaugeChart = echarts.init(document.getElementById('gauge'));
-  const lineChart = echarts.init(document.getElementById('chart'));
-  let selectedAlarmId = null;   // 当前聚焦的报警 id
+/* ====================================================================
+   /dashboard 首页脚本（P1 精简版）
+   保留的系统（一处未动）：
+     · 每秒轮询 /api/data 的 refresh() 及其引用的全部 DOM id
+     · window.TwinScene.setData({riskKey, strain, threshold}) 每秒推送链路
+     · sim 模式水印与六场景切换条（serial 模式隐藏）
+     · mount.js 的 resize 链路（fitScreen / resizeChartsSoon 尺寸同步）
+   已搬走（不在本页）：ECharts 四图表 → /trend 与 /alarms；
+     报警跑马灯 + 处置队列 + 确认处理 → /alarms；设备健康度/系统运行 → /device；
+     参数表单/审计/清空入口 → /settings
+   红线：所有数值只来自 /api/data；设备离线显示「--」并说明原因；不写死任何假数字。
+   ==================================================================== */
+(function () {
+  'use strict';
 
-  gaugeChart.setOption({
-    series: [{
-      type: 'gauge', min: 0, max: 200, radius: '92%', center: ['50%', '58%'],
-      startAngle: 200, endAngle: -20,
-      axisLine: { lineStyle: { width: 14, color: [[0.6,'#34d399'],[0.75,'#fbbf24'],[0.9,'#fb923c'],[1,'#f43f5e']] } },
-      pointer: { itemStyle: { color: '#ffb74d' }, width: 5 },
-      axisTick: { distance: -22, splitNumber: 5, lineStyle: { color: '#1c3a5e', width: 1 } },
-      splitLine: { distance: -24, length: 10, lineStyle: { color: '#21446b', width: 2 } },
-      axisLabel: { distance: -4, color: '#7a9cc0', fontSize: 10 },
-      detail: { formatter: '{value}', color: '#eaf6ff', fontSize: 22, offsetCenter: [0, '40%'],
-        fontFamily: 'Microsoft YaHei' },
-      title: { offsetCenter: [0, '72%'], color: '#7a9cc0', fontSize: 12 },
-      data: [{ value: 0, name: UNIT }]
-    }]
-  });
+  var CSRF_TOKEN = {{ csrf_token|tojson }};
+  var UNIT = {{ unit|tojson }};
+  var INITIAL_THRESHOLD = {{ threshold }};
 
-  lineChart.setOption({
-    grid: { left: 44, right: 16, top: 30, bottom: 34 },
-    xAxis: { type: 'category', data: [], boundaryGap: false,
-      axisLine: { lineStyle: { color: '#21446b' } },
-      axisLabel: { color: '#7a9cc0', fontSize: 10 } },
-    yAxis: { type: 'value', scale: true,
-      axisLine: { lineStyle: { color: '#21446b' } },
-      splitLine: { lineStyle: { color: 'rgba(33,68,107,.35)' } },
-      axisLabel: { color: '#7a9cc0', fontSize: 10 } },
-    tooltip: { trigger: 'axis', backgroundColor: 'rgba(13,32,56,.95)',
-      borderColor: '#1c3a5e', textStyle: { color: '#cfe8ff', fontSize: 12 },
-      axisPointer: { lineStyle: { color: '#3fd0ff' } },
-      formatter: function(params){
-        const p = params[0]; if(!p) return '';
-        const t = p.axisValue;
-        const v = Number(p.data).toFixed(2);
-        return '<div style="font-weight:600;margin-bottom:4px">'+t+'</div>'
-             + '<span style="color:#3fd0ff">应变指标</span>：<b>'+v+'</b> '+UNIT;
-      } },
-    dataZoom: [
-      { type: 'inside', start: 0, end: 100 },
-      { type: 'slider', height: 14, bottom: 6, borderColor: '#1c3a5e',
-        backgroundColor: 'rgba(13,32,56,.6)', fillerColor: 'rgba(63,208,255,.15)',
-        handleStyle: { color: '#3fd0ff' }, textStyle: { color: '#7a9cc0', fontSize: 10 } }
-    ],
-    series: [{
-      name: '应变指标', type: 'line', data: [], smooth: true, showSymbol: false,
-      lineStyle: { color: '#3fd0ff', width: 2 },
-      areaStyle: { color: 'rgba(63,208,255,0.12)' },
-      markLine: {
-        symbol: 'none', silent: true,
-        data: [{ yAxis: INITIAL_THRESHOLD, name: '阈值' }],
-        lineStyle: { color: '#f43f5e', type: 'dashed', width: 1.5 },
-        label: { color: '#f43f5e', formatter: '阈值 ' + INITIAL_THRESHOLD, position: 'insideEndTop', fontSize: 10 }
-      }
-    }]
-  });
+  /* ---------------- 0. 基础工具 ---------------- */
+  function $(id) { return document.getElementById(id); }
+  function esc(v) { return String(v).replace(/[&<>"']/g, function (c) {
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function reduceMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+  function setText(el, txt) { if (el) el.textContent = txt; }
 
-  function escapeHtml(v){ return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function levelClass(l){ return l==='严重报警'?'lv-crit':(l==='报警'?'lv-alarm':(l==='预警'?'lv-warn':'')); }
-  function badgeClass(l){ return l==='严重报警'?'crit':(l==='报警'?'alarm':(l==='预警'?'warn':'info')); }
-
-  // 风险分级：正常/预警/报警/严重报警；设备离线用单独状态
-  function riskOf(strain, threshold, isOnline){
-    if (!isOnline) return { label:'设备离线', icon:'⛔', cls:'risk-offline' };
-    if (strain <= threshold) return { label:'安全', icon:'●', cls:'risk-normal' };
-    if (strain <= threshold*1.1) return { label:'预警', icon:'▲', cls:'risk-warn' };
-    if (strain <= threshold*1.2) return { label:'报警', icon:'■', cls:'risk-alarm' };
-    return { label:'严重报警', icon:'⛔', cls:'risk-crit' };
+  /* 风险/报警等级色阶（与后端 rules.py 分级口径一致：正常/预警/报警/严重，离线单列）
+     颜色只是辅助，每档都带中文标签 + 图标，色弱用户同样可读 */
+  var SEV = {
+    0: { key: 'normal',  color: '#15803d', label: '正常',     icon: '●' },
+    1: { key: 'warn',    color: '#b45309', label: '预警',     icon: '▲' },
+    2: { key: 'alarm',   color: '#c2410c', label: '报警',     icon: '■' },
+    3: { key: 'crit',    color: '#be123c', label: '严重报警', icon: '◆' },
+    4: { key: 'offline', color: '#6b7280', label: '设备离线', icon: '⛔' }
+  };
+  /* 风险分级：安全 / 预警 / 报警 / 严重报警；设备离线单独一档
+     返回的 key 与 SEV[sev].key 同口径（normal/warn/alarm/crit/offline）：
+     用于 #scene 的 sev-* 类与 TwinScene.setData({riskKey})，两者必须一致。 */
+  function riskOf(strain, threshold, isOnline) {
+    if (!isOnline) return { sev: 4, key: 'offline', label: '设备离线', icon: '⛔' };
+    if (strain <= threshold) return { sev: 0, key: 'normal', label: '正常', icon: '●' };
+    if (strain <= threshold * 1.1) return { sev: 1, key: 'warn', label: '预警', icon: '▲' };
+    if (strain <= threshold * 1.2) return { sev: 2, key: 'alarm', label: '报警', icon: '■' };
+    return { sev: 3, key: 'crit', label: '严重报警', icon: '◆' };
   }
 
-  function fmtUptime(sec){
-    sec = Math.max(0, Math.floor(sec));
-    const h = String(Math.floor(sec/3600)).padStart(2,'0');
-    const m = String(Math.floor(sec%3600/60)).padStart(2,'0');
-    const s = String(sec%60).padStart(2,'0');
-    return h + ':' + m + ':' + s;
+  /* ====================================================================
+     ① 尺寸同步：3D 画布高度由 CSS calc(100vh - 顶栏 - 模拟条) 决定，
+     ECharts 已随图表搬到 /trend、/alarms，本页只保留 3D 的尺寸链路。
+     fitScreen()：窄屏回退时不锁定设计稿尺寸（本页无 1920×1080 定尺），
+     但仍保留皮肤类切换，供 P2 的浅色渲染与后续响应式使用。
+     resizeChartsSoon()：容器尺寸在首帧布局后才定型，这里在下一帧与 400ms 后
+     各补一次同步（与 mount.js 的 resize() 同口径），避免"首屏被压成窄带"。
+     ==================================================================== */
+  var hero = $('hero');
+  function fitScreen() {
+    /* 手机端 CSS 已改为文档流 + 52vh 定高，这里只做兜底：把已生效的高度写回 style，
+       避免浏览器在地址栏收起/展开时把 100vh 算错导致画布抖动。 */
+    if (!hero) return;
+    if (window.innerWidth <= 768) {
+      hero.style.removeProperty('height');
+    } else {
+      hero.style.removeProperty('height');   /* 高度交给 CSS calc(100vh - ...) */
+    }
+  }
+  function resizeCharts() {
+    /* 本页无 ECharts；3D 画布的尺寸由 mount.js 的 ResizeObserver + 每秒兜底 resize() 负责。
+       这里显式调用一次 TwinScene.resize()，保证 fitScreen 之后画布与容器同步。 */
+    if (window.TwinScene && typeof window.TwinScene.resize === 'function') {
+      try { window.TwinScene.resize(); } catch (e) { /* 单次失败不影响轮询 */ }
+    }
+  }
+  function resizeChartsSoon() {
+    resizeCharts();
+    if (window.requestAnimationFrame) window.requestAnimationFrame(function () { resizeCharts(); });
+    window.setTimeout(resizeCharts, 400);
   }
 
-  function setConn(ok, msg){
-    const el = document.getElementById('connectionStatus');
-    el.className = ok ? 'conn' : 'conn error';
-    el.textContent = msg;
-    const light = document.getElementById('connLight');
-    light.className = ok ? 'conn' : 'conn error';
+  /* ====================================================================
+     ② 数字 count-up：数字变化时滚动过渡（reduced-motion 下直接赋值）
+     ==================================================================== */
+  var numPrev = Object.create(null);
+  var numAnims = Object.create(null);
+  function setNum(el, value, opt) {
+    if (!el) return;
+    opt = opt || {};
+    if (value === null || value === undefined || !isFinite(value)) { el.textContent = '--'; numPrev[el.id] = null; return; }
+    var dec = opt.dec || 0;
+    var fmt = opt.fmt || function (v) { return v.toFixed(dec) + (opt.suffix || ''); };
+    var key = el.id || 'anon';
+    var prev = numPrev[key];
+    numPrev[key] = value;
+    var target = fmt(value);
+    var raf = window.requestAnimationFrame;
+    if (reduceMotion() || !raf || prev === null || prev === undefined) { el.textContent = target; return; }
+    if (Math.abs(prev - value) < Math.pow(10, -dec) / 2) { el.textContent = target; return; }
+    if (numAnims[key]) { raf.call(window, numAnims[key]); numAnims[key] = null; }
+    var from = prev, span = value - prev, t0 = null, DUR = opt.dur || 620;
+    el.classList.add('flash');
+    window.setTimeout(function () { el.classList.remove('flash'); }, 780);
+    numAnims[key] = function step(ts) {
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / DUR);
+      var e = 1 - Math.pow(1 - p, 3);               // easeOutCubic
+      el.textContent = fmt(from + span * e);
+      if (p < 1) { numAnims[key] = step; raf.call(window, step); } else { numAnims[key] = null; }
+    };
+    raf.call(window, numAnims[key]);
   }
 
-  function selectAlarm(id){
-    selectedAlarmId = (selectedAlarmId === id) ? null : id;  // 再点一次折叠
-    renderAlarmDetail();
+  /* ---------------- 连接状态（顶栏与指标带同源） ---------------- */
+  function setConn(ok, msg) {
+    var el = $('connectionStatus');
+    if (el) { el.className = ok ? 'conn' : 'conn error'; el.textContent = msg; }
   }
 
-  function renderAlarmDetail(){
-    const box = document.getElementById('alarmDetail');
-    if (selectedAlarmId == null) { box.className = 'alarm-detail'; box.innerHTML=''; return; }
-    // 从当前缓存找（refresh 里已存 latestAlarms）
-    const a = (window._alarms||[]).find(x => x.id === selectedAlarmId);
-    if (!a) { box.className='alarm-detail'; box.innerHTML=''; return; }
-    box.className = 'alarm-detail open';
-    const isDevice = (a.rule==='设备离线' || a.rule==='设备恢复');
-    const strainText = isDevice ? '—（设备事件，无应变值）' : escapeHtml(a.strain) + ' ' + UNIT;
-    box.innerHTML =
-      '<div class="d-title">报警 #' + a.id + ' · ' + escapeHtml(a.rule) + '</div>' +
-      '<div class="d-reason">' + escapeHtml(a.reason) + '</div>' +
-      '<div class="d-meta">' +
-        '<span class="tag">触发规则：<b>' + escapeHtml(a.rule) + '</b></span>' +
-        '<span class="tag">触发值：<b>' + strainText + '</b></span>' +
-        '<span class="tag">触发时间：<b>' + escapeHtml(a.time) + '</b></span>' +
-        '<span class="tag">处置状态：<b>' + escapeHtml(a.status) + '</b></span>' +
-      '</div>' +
-      '<div class="d-actions">' +
-        (a.status === '未处理'
-          ? '<button class="btn btn-blue" onclick="acknowledgeAlarm('+a.id+')">确认处理</button>'
-          : '<span class="done-tag" style="align-self:center">✓ 该报警已处理</span>') +
-        '<button class="btn btn-ghost" onclick="selectAlarm('+a.id+')">收起</button>' +
-      '</div>';
+  /* ---------------- 顶部实时时钟（本页改为每分钟刷新页脚，避免无谓 DOM 写入） ---------------- */
+  function tickClock() {
+    /* 本页不再显示时钟；保留函数与每秒调用，仅同步页脚刷新时刻，避免拆掉现有启动序列 */
+    return null;
   }
 
-  async function refresh(){
+  /* ====================================================================
+     主刷新循环：每 1 秒轮询 /api/data，指标带 / 风险等级 / 3D 联动由同一份快照驱动
+     ==================================================================== */
+  async function refresh() {
     try {
-      const r = await fetch('/api/data');
-      if (r.status===401){ window.location.href='/login'; return; }
-      if (!r.ok) throw new Error(`请求失败：${r.status}`);
-      const d = await r.json();
-      window._alarms = d.alarms || [];
+      var r = await fetch('/api/data');
+      if (r.status === 401) { window.location.href = '/login'; return; }
+      if (!r.ok) throw new Error('请求失败：' + r.status);
+      var d = await r.json();
+      var alarms = d.alarms || [];
+      window._alarms = alarms;                       // 供 /alarms 页与诊断复用同一份口径
 
-      // ---- 设备在线判定（串口离线 / 模拟离线）----
-      const h = d.device_health || {};
-      const isOnline = h.state !== 'offline';
+      /* ---- 设备在线判定（串口离线 / 模拟离线）与风险分级 ---- */
+      var h = d.device_health || {};
+      var isOnline = h.state !== 'offline';
+      var hasValue = isOnline && d.strain !== null && d.strain !== undefined;
+      var risk = riskOf(d.strain, d.threshold, isOnline);
+      var isSim = d.source === 'sim';
+      var sev = SEV[risk.sev];
 
-      // ---- 风险卡 ----
-      const risk = riskOf(d.strain, d.threshold, isOnline);
-      const card = document.getElementById('riskCard');
-      card.className = 'risk-card ' + risk.cls;
-      document.getElementById('riskLabel').innerHTML =
-        '<span class="state-icon">'+risk.icon+'</span><span>'+risk.label+'</span>';
-      document.getElementById('strainNum').textContent = (isOnline && d.strain != null) ? d.strain.toFixed(2) : '--';
-      document.getElementById('strainUnit').textContent = UNIT;
-      document.getElementById('thresholdShow').textContent = d.threshold;
-      const rateEl = document.getElementById('rateShow');
-      if (d.rate == null) { rateEl.textContent = '--'; rateEl.className='rate-flat'; }
-      else {
-        rateEl.textContent = (d.rate>0?'+':'') + d.rate;
-        rateEl.className = d.rate>0 ? 'rate-up' : (d.rate<0 ? 'rate-down' : 'rate-flat');
+      /* ---- ② 指标带：风险等级（色 + 图标 + 文字）/ 当前指标 / 阈值 / 变化率 / 连接状态 ---- */
+      var msRisk = $('msRisk');
+      if (msRisk) msRisk.setAttribute('data-risk', risk.key);
+      setText($('msRiskIcon'), risk.icon);
+      setText($('riskLabel'), risk.label);
+      setNum($('strainNum'), hasValue ? d.strain : null, { dec: 2 });   // 离线 → --（不伪造读数）
+      setText($('strainUnit'), hasValue ? UNIT : '');
+      setText($('thresholdShow'), d.threshold);
+      var rateEl = $('rateShow');
+      if (!rateEl) { /* 页面结构变化时忽略，不影响轮询 */ }
+      else if (d.rate === null || d.rate === undefined) { rateEl.textContent = '--'; }
+      else { setNum(rateEl, d.rate, { dec: 2, fmt: function (v) { return (v > 0 ? '+' : '') + v.toFixed(2); } }); }
+
+      /* 连接状态：离线时给出原因（最近异常 / 连续超时），不伪造在线 */
+      var link = h.state === 'online' ? '在线' : (h.state === 'offline' ? '离线' : '未知');
+      if (h.state === 'offline') {
+        link = '离线' + (h.last_error ? '（' + h.last_error + '）' : (h.timeout_count ? '（连续超时 ' + h.timeout_count + ' 次）' : ''));
       }
+      setText($('linkState'), hasValue ? link : (link + ' · 读数 --'));
 
-      // ---- 设备健康度 ----
-      document.getElementById('healthDevice').textContent = d.device_id || '--';
-      document.getElementById('healthSource').textContent = d.source==='serial' ? '串口（真实设备）' : '模拟器';
-      const st = document.getElementById('healthState');
-      st.textContent = h.text || d.sensor_status || '--';
-      st.className = 'health-state ' + (h.state==='online' ? 'state-online' : (h.state==='offline' ? 'state-offline' : 'state-unknown'));
-      document.getElementById('healthHeartbeat').textContent = h.last_heartbeat || '--';
-      document.getElementById('healthError').textContent = h.last_error || '无';
-      document.getElementById('sourceBadge').textContent = '数据源：' + (d.source==='serial' ? '串口（真实）' : '模拟');
-      document.getElementById('sourceBadge').className = 'source-badge' + (d.source==='serial' ? ' serial' : '');
+      /* ---- ③ 3D 场景联动：风险等级主题类 / 场景标签 ----
+         只切换 sev-* 类，绝不整体重写 class（避免抹掉其它状态标记） */
+      var scene = $('scene');
+      if (scene) scene.className = 'scene sev-' + risk.key;
+      /* 推送到 three.js 场景：风险等级 + 当前值 + 阈值（吊索受力着色与测点脉冲由此驱动） */
+      if (window.TwinScene && typeof window.TwinScene.setData === 'function') {
+        window.TwinScene.setData({ riskKey: risk.key, strain: hasValue ? d.strain : null, threshold: d.threshold });
+      }
+      setText($('slValue'), hasValue ? d.strain.toFixed(2) : '--');
+      var dot = $('slDot');
+      if (dot) { dot.style.background = sev.color; dot.style.boxShadow = 'none'; }
 
-      // ---- 模拟模式：水印 + 场景面板常显；串口模式隐藏 ----
-      const isSim = d.source === 'sim';
-      document.getElementById('demoBanner').style.display = isSim ? 'flex' : 'none';
-      document.getElementById('scenarioBar').style.display = isSim ? 'flex' : 'none';
+      /* ---- ④ 模拟演示条：仅 sim 模式显示（串口模式整条隐藏，绝不伪装） ---- */
+      document.body.classList.toggle('has-sim-strip', isSim);
       if (isSim) {
-        const scn = d.scenario || 'normal';
-        const labelMap = { normal:'正常运行', warn:'预警', alarm:'报警', critical:'严重报警', offline:'设备离线', recover:'设备恢复' };
-        document.getElementById('scenarioCurrent').textContent = labelMap[scn] || scn;
-        document.querySelectorAll('.scn-btn').forEach(b => {
-          b.className = 'scn-btn' + (b.dataset.scn === 'offline' ? ' offline-btn' : '')
-            + (b.dataset.scn === scn ? ' active' : '');
+        var labelMap = { normal: '正常运行', warn: '预警', alarm: '报警', critical: '严重报警', offline: '设备离线', recover: '设备恢复' };
+        setText($('scenarioCurrent'), labelMap[d.scenario] || d.scenario || '--');
+        document.querySelectorAll('.scn-btn').forEach(function (b) {
+          b.className = 'scn-btn' + (b.dataset.scn === 'offline' ? ' offline-btn' : '') + (b.dataset.scn === d.scenario ? ' active' : '');
         });
       }
 
-      // ---- 待处置报警 ----
-      const alarms = d.alarms || [];
-      const pending = alarms.filter(a => a.status === '未处理').length;
-      const pn = document.getElementById('pendingNum');
-      pn.textContent = pending;
-      pn.className = 'pending-num ' + (pending>0 ? 'crit' : 'ok');
-      document.getElementById('cntWarn').textContent = alarms.filter(a=>a.type==='预警').length;
-      document.getElementById('cntAlarm').textContent = alarms.filter(a=>a.type==='报警').length;
-      document.getElementById('cntCrit').textContent = alarms.filter(a=>a.type==='严重报警').length;
+      /* ---- 顶栏/共享骨架状态区（模拟徽章 / 连接状态 / 待处置铃铛） ---- */
+      if (window.BGShell) {
+        window.BGShell.setShellSim(isSim);
+        window.BGShell.setShellConn(h.state === 'offline' ? 'error' : (isSim ? 'sim' : 'ok'),
+          h.state === 'offline' ? '设备离线' : '在线');
+        window.BGShell.setShellBell(alarms.filter(function (a) { return a.status === '未处理'; }).length);
+      }
 
-      // ---- 运行状态 ----
-      document.getElementById('uptimeNum').textContent = fmtUptime(d.uptime||0);
-      document.getElementById('uptimeShow').textContent = fmtUptime(d.uptime||0);
-      document.getElementById('intervalShow').textContent = d.interval + ' 秒';
-      document.getElementById('sampleCount').textContent = d.sample_count + ' 次';
-      document.getElementById('lastSampleTime').textContent = d.last_sample_time;
-      document.getElementById('sensorStatus').textContent = d.sensor_status;
-
-      // ---- 图表 ----
-      // 离线时仪表显示 --（不伪造读数），指针停在当前值位置
-      gaugeChart.setOption({ series:[{ data:[{ value: (isOnline && d.strain!=null) ? d.strain : 0,
-        name: UNIT }], detail: { formatter: (isOnline && d.strain!=null) ? '{value}' : '--' } }] });
-      const times = d.history.map(i => i.time);
-      const vals = d.history.map(i => i.strain);
-      lineChart.setOption({
-        xAxis: { data: times },
-        series: [{ data: vals, markLine: { data: [{ yAxis: d.threshold, name:'阈值' }],
-          label: { formatter: '阈值 ' + d.threshold } } }]
-      });
-      // 图表空数据提示
-      const cc = document.getElementById('chartConn');
-      cc.className = 'conn idle';
-      cc.textContent = vals.length === 0 ? '等待采样数据…' : '';
-
-      // ---- 报警队列（行可点击聚焦详情）----
-      const tbody = document.getElementById('alarmTable');
-      tbody.innerHTML = alarms.slice().reverse().map(a => {
-        const isDevice = (a.rule==='设备离线' || a.rule==='设备恢复');
-        return `<tr onclick="selectAlarm(${a.id})">
-          <td data-label="时间">${escapeHtml(a.time)}</td>
-          <td data-label="应变指标" class="${levelClass(a.type)}">${isDevice?'--':escapeHtml(a.strain)}</td>
-          <td data-label="等级"><span class="badge ${badgeClass(a.type)}">${escapeHtml(a.type)}</span></td>
-          <td data-label="规则">${escapeHtml(a.rule)}</td>
-          <td data-label="原因" class="reason-cell">${escapeHtml(a.reason)}</td>
-          <td data-label="状态">${escapeHtml(a.status)}</td>
-          <td data-label="操作">${a.status==='未处理'?`<button class="ack-btn" onclick="event.stopPropagation();acknowledgeAlarm(${a.id})">确认处理</button>`:'<span class="done-tag">已完成</span>'}</td>
-        </tr>`;
-      }).join('') || '<tr><td colspan="7" class="empty">暂无报警，系统运行正常</td></tr>';
-
-      renderAlarmDetail();
-      setConn(true, '● 数据连接正常');
-    } catch(e){
+      /* ---- 页脚刷新时刻 ---- */
+      setText($('footLast'), d.last_sample_time || '--');
+      setConn(true, '● 数据连接正常 · ' + (isSim ? '模拟数据' : '串口真实设备'));
+      /* 页面隐藏（切到后台标签）时不刷新，回来立刻补一次，避免残留旧读数 */
+      if (document.hidden) window.__dashStale = true;
+    } catch (e) {
       console.error(e);
       setConn(false, '⚠ 数据连接失败，请检查服务是否运行');
-      document.getElementById('chartConn').className = 'conn error';
-      document.getElementById('chartConn').textContent = '接口断开';
+      var scene2 = $('scene');
+      if (scene2) scene2.className = 'scene sev-offline';   // 连接断开时按离线呈现，不假装正常
+      if (window.BGShell) window.BGShell.setShellConn('error', '连接失败');
     }
   }
 
-  async function clearAlarms(){ if(!confirm('确定清除当前报警和历史报警记录吗？'))return;
-    try{ const r=await fetch('/api/clear_alarms',{method:'POST',headers:{'X-CSRF-Token':CSRF_TOKEN}}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; selectedAlarmId=null; refresh(); }catch(e){ setConn(false,'⚠ 清除报警失败'); } }
-  async function acknowledgeAlarm(id){ try{ const r=await fetch(`/api/acknowledge_alarm/${id}`,{method:'POST',headers:{'X-CSRF-Token':CSRF_TOKEN}}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; refresh(); }catch(e){ setConn(false,'⚠ 确认报警失败'); } }
-  async function clearData(){ if(!confirm('确定清除当前数据和历史数据记录吗？'))return;
-    try{ const r=await fetch('/api/clear_data',{method:'POST',headers:{'X-CSRF-Token':CSRF_TOKEN}}); if(r.status===401){location.href='/login';return;} if(!r.ok)throw 0; refresh(); }catch(e){ setConn(false,'⚠ 清除数据失败'); } }
+  /* ---------------- 操作类接口（保持原有交互与 CSRF 头） ----------------
+     清空数据 / 清空报警入口已按 P1 要求迁到 /settings；
+     本页只保留模拟场景切换（sim 模式水印条的一部分）。 */
+  async function setScenario(name) {
+    try { var r = await fetch('/api/scenario', { method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF_TOKEN },
+        body: JSON.stringify({ scenario: name }) });
+      if (r.status === 401) { location.href = '/login'; return; }
+      if (!r.ok) { var e = await r.json().catch(function () { return {}; }); setConn(false, '⚠ 切换场景失败：' + (e.error || r.status)); }
+      refresh();
+    } catch (e) { setConn(false, '⚠ 切换场景失败'); }
+  }
 
-  async function setScenario(name){ try{ const r=await fetch('/api/scenario',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':CSRF_TOKEN},body:JSON.stringify({scenario:name})}); if(r.status===401){location.href='/login';return;} if(!r.ok){const e=await r.json().catch(()=>({})); setConn(false,'⚠ 切换场景失败：'+(e.error||r.status));} refresh(); }catch(e){ setConn(false,'⚠ 切换场景失败'); } }
+  /* ====================================================================
+     ⑦ 全屏观看（只留 3D 桥体）
+     · body.view-3d-only → 指标带 / 顶栏 / 侧栏 / 模拟条 / 页脚全部 display:none（零占位）
+       —— 旧版用 visibility 隐藏，元素仍占 62px/240px/154px，正是「全屏后显示很奇怪」的根因，
+          详见本页 <style> 里「P2 修复」注释块。
+     · fullscreenchange 必须监听：系统级退出（ESC / F11）时同步摘掉该 class，绝不出现死锁
+     · 三条进入路径都要能铺满：
+         ① 真 Fullscreen API（Chrome/Edge/Android Chrome）
+         ② API 不存在（iOS Safari 对非 video 元素不支持）→ 纯 CSS fixed 铺满，靠 #fsExit 退出
+         ③ API 被拒（权限策略/手势失效）→ 同样退化为纯 CSS 铺满，不静默失败
+     ==================================================================== */
+  function fsElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement ||
+           document.msFullscreenElement || null;
+  }
+  /* 全屏切换后容器尺寸会变（侧栏/顶栏被零占位收走），画布必须立刻重算。
+     rAF + 400ms + 700ms 三次兜住：部分浏览器要在下一帧才给出最终布局尺寸。 */
+  function syncCanvasSoon() {
+    fitScreen();
+    resizeChartsSoon();
+    window.setTimeout(resizeChartsSoon, 180);
+    window.setTimeout(resizeChartsSoon, 700);
+  }
+  function requestFs() {
+    var de = document.documentElement;
+    try {
+      var fn = de.requestFullscreen || de.webkitRequestFullscreen || de.msRequestFullscreen;
+      if (!fn) { syncCanvasSoon(); return; }   // ② iOS：没有 API，CSS 铺满已生效
+      var p = fn.call(de);
+      if (p && p.catch) p.catch(function () { syncCanvasSoon(); });   // ③ 被拒也照常铺满
+    } catch (e) { syncCanvasSoon(); }
+  }
+  function exitFs() {
+    try {
+      var fn = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+      if (fn) { var p = fn.call(document); if (p && p.catch) p.catch(function () {}); }
+    } catch (e) { /* 忽略 */ }
+  }
+  function syncFs() {
+    var on = !!fsElement();
+    document.body.classList.toggle('view-3d-only', on);
+    syncCanvasSoon();
+    return on;
+  }
+  function toggleFs() {
+    if (fsElement()) { exitFs(); return; }
+    document.body.classList.add('view-3d-only');
+    syncCanvasSoon();      // 先让 CSS 铺满生效（iOS 走的就是这条路径），再请求真全屏
+    requestFs();
+  }
+  var fsBtn = $('fsBtn');
+  if (fsBtn) fsBtn.addEventListener('click', toggleFs);
+  var fsExit = $('fsExit');
+  if (fsExit) fsExit.addEventListener('click', function () {
+    if (fsElement()) exitFs(); else syncFs();     // 系统级退出由 fullscreenchange 收尾，这里兜底
+  });
+  document.addEventListener('fullscreenchange', syncFs);
+  document.addEventListener('webkitfullscreenchange', syncFs);
+  document.addEventListener('MSFullscreenChange', syncFs);
+  document.addEventListener('fullscreenerror', syncCanvasSoon);
+  /* 手机横竖屏切换 / 地址栏收放（visualViewport 变化）时，全屏态要重新贴合视口 */
+  window.addEventListener('orientationchange', function () {
+    syncCanvasSoon(); window.setTimeout(syncCanvasSoon, 350);
+  });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', function () {
+      if (document.body.classList.contains('view-3d-only')) syncCanvasSoon();
+    });
+  }
 
+  /* ====================================================================
+     ⑧ 「测点标注」三档开关 → 常驻读数 #sceneLabel 联动
+     3D 的测点标注由 hud.js 的三态开关控制（setLabelMode: all / sensor / off），
+     而常驻读数写在模板里，两者原本毫无关联。这里包一层 setLabelMode，
+     把 off 态映射成 body.labels-off（隐藏样式在本页 <style> 与 app.css 里）。
+     不改 hud.js，也不改它的三态语义；3D 模块异步加载，挂上即停。
+     ==================================================================== */
+  function bindLabelSwitch() {
+    var api = window.TwinScene;
+    if (!api || typeof api.setLabelMode !== 'function' || api.__labelLinked) return false;
+    var orig = api.setLabelMode;
+    api.setLabelMode = function (mode) {
+      var ret = orig.call(this, mode);
+      try { document.body.classList.toggle('labels-off', mode === 'off'); } catch (e) { /* 忽略 */ }
+      return ret;
+    };
+    api.__labelLinked = true;
+    return true;
+  }
+  var labelLinkTries = 0;
+  var labelLinkTimer = window.setInterval(function () {
+    if (bindLabelSwitch() || ++labelLinkTries > 120) window.clearInterval(labelLinkTimer);
+  }, 500);
+  bindLabelSwitch();        // 3D 已就绪（热刷新/二次进入）时立即挂钩
+
+  /* 供内联 onclick / 诊断使用的全局入口 */
+  window.setScenario = setScenario;
+  window.__fsSync = syncFs;          // 全屏状态对齐（诊断/验证用）
+
+  /* ---------------- 启动 ---------------- */
+  fitScreen();
+  resizeChartsSoon();               // 首屏尺寸：容器定型后在下一帧与 400ms 各同步一次
   refresh();
-  setInterval(refresh, 1000);
-  window.addEventListener('resize', ()=>{ gaugeChart.resize(); lineChart.resize(); });
+  window.addEventListener('resize', function () { fitScreen(); resizeCharts(); });
+  window.addEventListener('load', resizeCharts);
+  window.setInterval(fitScreen, 1000);      // 窗口尺寸变化兜底（投影切换分辨率、地址栏收放等）
+  window.setInterval(refresh, 1000);
+  /* 从后台标签切回来立即补一次（否则最长要等 1 秒才更新） */
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && window.__dashStale) { window.__dashStale = false; refresh(); }
+  });
+})();
 </script>
+
+<!-- ==================================================================
+     三维数字孪生场景挂载（ES module，按需加载本地 three.js）
+     与上面的内联脚本通过 window.TwinScene 单向通信：
+       内联脚本每秒 refresh() → TwinScene.setData({riskKey, strain, threshold})
+     ================================================================== -->
+<script type="module" src="/static/js/twin/mount.js"></script>
+
+{# 共享骨架行为：桌面收起/展开 + localStorage 记忆 + 移动端抽屉 #}
+{{ shell.shell_scripts() }}
 
 </body>
 </html>

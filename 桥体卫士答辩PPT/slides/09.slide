@@ -15,7 +15,7 @@
       </Box>
       <Box style={{ flex: 1, flexDirection: 'column', justifyContent: 'center', gap: 14 }}>
         <Box style={{ background: '#E8EFF8', borderRadius: 10, padding: 20 }}>
-          <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#0E3F8C' }}>自动化测试 28 项全绿</Text>
+          <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#0E3F8C' }}>自动化测试 101 项全绿</Text>
           <Text style={{ fontSize: 17, color: '#4A5568', marginTop: 10, lineHeight: 1.6 }}>规则引擎（含防刷屏、等级分级）· 数据层 · 鉴权 · API 端到端 · 设备心跳 · 串口链路</Text>
         </Box>
         <Box style={{ background: '#F7F9FC', border: '1px solid #D6DCE5', borderRadius: 10, padding: 20 }}>

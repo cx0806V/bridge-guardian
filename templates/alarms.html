@@ -1,0 +1,690 @@
+{%- import "_shell.html" as shell -%}
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>报警中心 - 桥体卫士</title>
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ffffff'/%3E%3Cpath d='M5 23h22M5 23c3-6 7.5-9 11-9s8 3 11 9M16 14V7M9 7h14' fill='none' stroke='%2316a34a' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+  {# 共享骨架样式（侧栏/顶栏/抽屉），全站只有 _shell.html 一份定义 #}
+  {{ shell.shell_head() }}
+  <style>
+  /* 本页局部样式：只写「布局 / 尺寸 / 触摸目标」，配色一律交给 static/app.css 第 20 节与 _shell.html，
+     类名统一 pa- 前缀，不写任何 .sh-* 选择器。
+     ⚠️ 页面级缩放（.sh-page 作用域内的 --pg-s / --fs-* 覆盖）是「两页铺满」方案的一部分，
+        与 templates/device.html 的同名块一致：只在这两页生效，侧栏/顶栏与其它页面字号完全不变。
+        改这里请同步改 device.html，否则两页会出现字号跳变。 */
+
+  /* ---------- A. 页面级流体缩放（只作用于本页 .sh-page 子树） ----------
+     --pg-s = 1 → 1.25：1440→2592 视口宽度线性放大，上限 1.25。
+     1440=1.000 · 1680=1.208 · 1920=1.25 · ≥2592=1.25（2560 实测 1.25）。
+     1) --fs-* 在这里覆盖：app.css 在 :root 声明、本文件的 <style> 在 app.css 之后，
+        而 div.sh-page（0,1,1）特异性高于 :root（0,1,0）→ 覆盖有效，
+        且只沿 .sh-page 子树继承，不会反向影响侧栏/顶栏（它们不在 .sh-page 里）。
+     2) 页面自己写的像素字号一律写成 calc(Npx * var(--pg-s))。
+     3) JS 里还有一处：环形图中心字号（canvas 里 CSS 管不到），见 pageScale()。
+     ⚠️ 两条踩过的坑，改公式前先读：
+        · 不能写 (100vw - 1440px) * 0.00018：CSS calc 里「长度×长度」算出的是面积，
+          浏览器判为无效值 —— 实测会让 --pg-s 在计算值阶段失效，页面上所有
+          calc(Npx * var(--pg-s)) 全部退化成 0（卡片内边距、栅格间距、表格行高一起消失）。
+          必须用「长度 ÷ 长度」。
+        · 上限要写在 clamp 里，不能只写在 JS 里：CSS 侧原先没有上限，2560 宽时
+          --pg-s 会一路涨到 1.78，字号被放得过大（实测 --fs-sm 算出 21.33px）。 */
+  .sh-page {
+    --pg-s: clamp(1, calc((100vw - 1440px) / 1152px + 1), 1.25);
+    --fs-xs: calc(11px * var(--pg-s));
+    --fs-sm: calc(12px * var(--pg-s));
+    --fs-md: calc(13px * var(--pg-s));
+    --fs-lg: calc(15px * var(--pg-s));
+    --fs-xl: calc(22px * var(--pg-s));
+    --pg-stat-v: calc(30px * var(--pg-s));   /* 指标卡大数字（app.css 的 26px 口径再放大） */
+    --donut: calc(150px * var(--pg-s));      /* 环形图直径（app.css #donut 为大屏 112px） */
+    --dlw: calc(215px * var(--pg-s));        /* 环形图图例列宽（app.css .donut-legend max-width: 190px） */
+    --tier-h: calc(32px * var(--pg-s));      /* 已处理/报警总数 胶囊高度（app.css 写死 32px） */
+    /* 铺满高度：视口高 − 顶栏 64px − .sh-content 上下 padding(18+26) − 2px 余量 */
+    min-height: calc(100vh - 110px);
+    max-width: none;                         /* 取消 shell 的 1440px 上限，横向铺满可用宽度 */
+  }
+  /* ⚠️ .pa-stack 必须是 flex: 0 0 auto（不可伸不可缩）：
+     它的高度由 .sh-page 的 min-height 通过 align-items:stretch 决定，自己再带 flex-grow/shrink
+     反而会按 flex-basis 参与伸缩，把子项的高度关系搅乱（实测 2560 宽时两栏区被压到基线尺寸）。
+     高度分配只交给下面这一条 .pa-2col。 */
+  .pa-stack { display: flex; flex-direction: column; gap: calc(16px * var(--pg-s)); flex: 0 0 auto; }
+  .pa-stack > .pa-stats,
+  .pa-stack > .alarm-ticker,
+  .pa-stack > .pa-foot { flex: 0 0 auto; }   /* 指标带/跑马灯/页脚按内容自然高度 */
+  .pa-stack > .pa-2col { flex: 1 1 auto; }   /* 两栏区吃掉剩余高度 */
+  .pa-stats { display: grid; gap: calc(14px * var(--pg-s));
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .pa-stat { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; min-width: 0;
+    padding: calc(16px * var(--pg-s)) calc(18px * var(--pg-s)); }
+  .pa-stat-t { font-size: calc(12.5px * var(--pg-s)); color: #6b7280; }
+  .pa-stat .pending-num, .pa-stat .m-num { text-align: left; font-size: var(--pg-stat-v); }
+  .pa-stat-s { font-size: var(--fs-sm); color: #6b7280; }
+  /* 桌面：左列固定给环形图，右列弹性给 7 列处置队列（否则表格被挤到每列只剩几十像素、列被裁掉）。
+     左列宽度：300px 下限 / 320~560px 之间按页面宽度 24% 伸缩（1680 时 ≈336px，与改动前一致；
+     2560 时约 540px，否则大屏上左卡被压成细条、图例换行）。
+     ≤1000px 收起为单列（手机端流程见下方 768px 块）。
+     align-items: stretch（app.css 的 start 会被下面这条覆盖）→ 左卡片跟随右表格卡等高，不留半截空档；
+     卡片内部用 flex 把图例/Ring/胶囊垂直居中、表格区吃掉剩余高度。 */
+  .pa-2col { display: grid; gap: calc(16px * var(--pg-s));
+    grid-template-columns: minmax(300px, clamp(320px, 24%, 560px)) minmax(0, 1fr); align-items: stretch; }
+  .pa-2col > .card { display: flex; flex-direction: column; min-width: 0;
+    padding: calc(16px * var(--pg-s)) calc(18px * var(--pg-s)); }
+  .pa-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; flex: 0 0 auto; }
+  .pa-head h3 { margin: 0; }
+  .pa-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pa-sub { font-size: var(--fs-sm); color: #6b7280; font-weight: 400; }
+  .pa-glyph { width: 16px; height: 16px; flex: 0 0 auto; color: #16a34a; }
+  .pa-donut { display: flex; align-items: center; justify-content: center; gap: calc(14px * var(--pg-s));
+    flex: 1 1 auto; min-height: calc(180px * var(--pg-s)); flex-wrap: wrap; }
+  /* 环形图尺寸：app.css 的 #donut 是 112px（大屏右栏口径），本页放大到起算值并随 --pg-s 增长；
+     卡片被 .pa-2col 拉高后，layoutFill() 会按卡片实际高度把 --donut 再调大（见脚本注释），
+     否则环形图会孤零零悬在 680px 高的卡片中间。 */
+  #donut { width: var(--donut, calc(150px * var(--pg-s)));
+    height: var(--donut, calc(150px * var(--pg-s))); flex: 0 0 auto; }
+  /* 图例宽度由 JS 按内容实测后写进 --dlw（见 layoutFill）：CSS 给不收缩的兜底，
+     保证文字不出省略号；放不下时由 .pa-donut 的 flex-wrap 换行承接。 */
+  .donut-legend { flex: 0 0 auto; max-width: var(--dlw); gap: calc(2px * var(--pg-s)); }
+  /* 图例条目：文字不换行、数字不许被右边界裁掉（超宽时省略而不是溢出卡片） */
+  .dl-item { height: calc(26px * var(--pg-s)); min-width: 0; }
+  .dl-item .dl-t { overflow: hidden; text-overflow: ellipsis; }
+  .dl-item b { flex: 0 0 auto; }
+  .tier-row { height: var(--tier-h); margin-top: calc(12px * var(--pg-s)); flex: 0 0 auto; }
+  /* 表格区吃掉卡片剩余高度：无报警时那一行空态被撑满（表格是 flex 列，空态行自己长高），
+     有报警时封顶 560px 后内部滚动，与改动前的可滚动行为一致。 */
+  .pa-table { flex: 1 1 auto; max-height: none; min-height: calc(220px * var(--pg-s)); overflow: auto auto; }
+  .pa-foot { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; font-size: var(--fs-sm);
+    color: #6b7280; padding: 2px 2px 0; }
+  .pa-empty { margin: 0; padding: 24px 8px; text-align: center; font-size: var(--fs-md); color: #6b7280; }
+  /* 桌面端表格列宽：app.css 的 .reason-cell 预留 420px 会把「等级/状态/操作」挤成竖排单字。
+     这里只在桌面收紧原因列并禁止小单元格折行；手机端走 app.css 的卡片化（td 变块），不套用。 */
+  @media (min-width: 769px) {
+    .pa-table .reason-cell { max-width: none; min-width: 220px; }
+    .pa-table table { width: 100%; }
+    .pa-table thead th,
+    #alarmTable td[data-label="时间"],
+    #alarmTable td[data-label="等级"],
+    #alarmTable td[data-label="状态"],
+    #alarmTable td[data-label="操作"] { white-space: nowrap; }
+    /* 表格随 --pg-s 放大行高；空态行撑满表格区（无报警时不留大片空白） */
+    .pa-table .data-table th, .pa-table .data-table td { padding: calc(11px * var(--pg-s)) calc(12px * var(--pg-s)); }
+    .pa-table table { display: flex; flex-direction: column; max-height: calc(560px * var(--pg-s)); }
+    .pa-table thead, .pa-table tbody { display: flex; flex-direction: column; }
+    .pa-table tbody { flex: 1 1 auto; min-height: calc(200px * var(--pg-s)); }
+    .pa-table tbody tr { display: flex; align-items: center; }
+    .pa-table tbody tr > td { flex: 1 1 auto; min-width: 0; }
+    .pa-table tbody tr > td[data-label="时间"] { flex: 0 0 auto; }
+    .pa-table tbody tr > td[data-label="操作"] { flex: 0 0 auto; }
+    .pa-table tbody tr.empty-row { flex: 1 1 auto; align-items: center; justify-content: center; }
+    .pa-table tbody tr.empty-row > td.empty { flex: 0 1 auto; }
+  }
+  @media (max-width: 1000px) {
+    .pa-2col { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 768px) {
+    .pa-donut { flex-direction: column; min-height: 0; }
+    #donut { width: 128px; height: 128px; }
+    .pa-table { max-height: none; }
+    /* 触摸目标 ≥44×44px */
+    .pa-actions .btn, .pa-head button, .pa-foot a { min-height: 44px; display: inline-flex; align-items: center; }
+  }
+  /* 手机端与打印：还原为原尺寸，避免小屏被放大后破版、打印多页 */
+  @media (max-width: 768px), print {
+    .sh-page { --pg-s: 1; min-height: 0; min-height: auto; }
+    /* 手机端图例独占一行，宽度上限要放开：否则 215px 的桌面口径会把「严重报警 0」挤成省略号 */
+    .donut-legend { flex: 1 1 auto; max-width: none; width: 100%; }
+    .pa-stack, .pa-stack > .pa-2col { flex: 0 0 auto; }
+  }
+  </style>
+</head>
+<body class="sh-body">
+
+{# ------------------------------------------------------------------
+   报警中心页（搬家来源 templates/dashboard.html 底部通栏 + 右栏分级统计）
+   搬家 id 一个未改名： #alarmTicker #tickerTrack #alarmTable #alarmDetail
+                     #connectionStatus #donut #donutWarn #donutAlarm #donutCrit
+                     #heroAck #heroTotal #pendingNum #cntWarn #cntAlarm #cntCrit
+                     #footLast #footDot
+   红线：数值只来自 /api/data；无报警时如实显示「系统运行正常 · 暂无告警」；
+        POST 一律带 X-CSRF-Token；不引入任何外部资源。
+   ------------------------------------------------------------------ #}
+
+<div class="sh-layout">
+{{ shell.shell_sidebar('alarms') }}
+
+<div class="sh-main">
+  {{ shell.shell_topbar('报警中心', '报警分级统计 · 处置队列 · 一键处置', 'alarms') }}
+
+  <main class="sh-content">
+    <div class="sh-page pa-stack">
+
+      <!-- ============ 指标卡：待处置 / 预警 / 报警 / 严重报警（全部来自 /api/data 的 alarms） ============ -->
+      <div class="pa-stats">
+        <div class="card stat-card pa-stat">
+          <div class="pa-stat-t">待处置报警</div>
+          <div class="pending-num num ok" id="pendingNum">0</div>
+          <div class="pa-stat-s">状态为「未处理」的报警条数</div>
+        </div>
+        <div class="card stat-card pa-stat">
+          <div class="pa-stat-t">预警</div>
+          <div class="m-num num c-warn" id="cntWarn">0</div>
+          <div class="pa-stat-s">超过阈值 1.0 倍</div>
+        </div>
+        <div class="card stat-card pa-stat">
+          <div class="pa-stat-t">报警</div>
+          <div class="m-num num c-alarm" id="cntAlarm">0</div>
+          <div class="pa-stat-s">超过阈值 1.1 倍</div>
+        </div>
+        <div class="card stat-card pa-stat">
+          <div class="pa-stat-t">严重报警</div>
+          <div class="m-num num c-crit" id="cntCrit">0</div>
+          <div class="pa-stat-s">超过阈值 1.2 倍</div>
+        </div>
+      </div>
+
+      <!-- ============ 最新告警跑马灯（无缝横向滚动；无报警时如实显示运行正常） ============ -->
+      <div class="alarm-ticker ok" id="alarmTicker">
+        <span class="tk-badge">状态</span>
+        <div class="tk-view"><div class="tk-track" id="tickerTrack"></div></div>
+      </div>
+
+      <div class="pa-2col">
+        <!-- ============ 报警分级统计：环形占比图 + 三个分级数字 + 已处理/总数 ============ -->
+        <section class="card">
+          <div class="pa-head">
+            <h3>报警分级统计</h3>
+            <span class="pa-sub">按等级占比</span>
+          </div>
+          <div class="donut-box pa-donut">
+            <div id="donut"></div>
+            <div class="donut-legend">
+              <div class="dl-item warn"><i></i><span class="dl-t">预警</span><b class="num" id="donutWarn">0</b></div>
+              <div class="dl-item alarm"><i></i><span class="dl-t">报警</span><b class="num" id="donutAlarm">0</b></div>
+              <div class="dl-item crit"><i></i><span class="dl-t">严重报警</span><b class="num" id="donutCrit">0</b></div>
+            </div>
+          </div>
+          <div class="tier-row">
+            <span class="tier ok">已处理 <b id="heroAck" class="num">0</b></span>
+            <span class="tier info">报警总数 <b id="heroTotal" class="num">0</b></span>
+          </div>
+        </section>
+
+        <!-- ============ 报警处置队列（点击行看详情 + 确认处理；设备事件行应变列显示 --） ============ -->
+        <section class="card">
+          <div class="pa-head">
+            <h3>报警处置队列</h3>
+            <span class="pa-sub">点击行查看详情</span>
+            <span class="pa-actions">
+              <span class="conn" id="connectionStatus">数据连接正常</span>
+              <button class="btn btn-ghost" type="button" onclick="clearData()">清除数据</button>
+              <button class="btn btn-red" type="button" onclick="clearAlarms()">清除报警</button>
+            </span>
+          </div>
+
+          <div class="table-wrap pa-table">
+            <table class="data-table">
+              <thead><tr>
+                <th>时间</th><th>应变指标</th><th>等级</th><th>规则</th><th>原因</th><th>状态</th><th>操作</th>
+              </tr></thead>
+              <tbody id="alarmTable"></tbody>
+            </table>
+          </div>
+
+          <!-- 报警详情抽屉（点击行聚焦原因/规则/触发值/状态） -->
+          <div class="alarm-detail" id="alarmDetail"></div>
+        </section>
+      </div>
+
+      <!-- ============ 页脚口径（相对应变指标，无量纲，不声称工程级精度） ============ -->
+      <div class="pa-foot">
+        <span>单位口径：{{ unit }}（无量纲，非工程微应变）· 缩尺模型受载变化模拟</span>
+        <span class="foot-dot" id="footDot"></span>
+        <span>最近刷新 <span id="footLast">--</span></span>
+      </div>
+
+    </div>
+  </main>
+</div>
+</div><!-- /.sh-layout -->
+
+<!-- 本地 ECharts（离线可用，不依赖 CDN）。放在 body 末尾可保证图表脚本执行时已就绪。 -->
+<script src="/static/echarts.min.js"></script>
+<script>
+/* ====================================================================
+   报警中心页脚本 —— 从 templates/dashboard.html 内联脚本整体搬家
+   搬家内容：renderTicker（签名节流 + 无缝节点复制 + 按最高等级变色）
+             renderTable（tableSig 节流 + row-new 入场 + data-label 卡片化）
+             renderAlarmDetail / selectAlarm / window._alarms
+             acknowledgeAlarm / clearAlarms / clearData（POST 带 X-CSRF-Token，保留 confirm）
+             setConn / badgeClass / levelClass
+             refresh 每秒轮询 /api/data（401 → /login）
+   改动仅两处：① 环形图与状态灯改浅色 ② refresh 只更新本页存在的 id
+   红线：数值只来自 /api/data；无报警如实显示「系统运行正常 · 暂无告警」。
+   ==================================================================== */
+(function () {
+  'use strict';
+
+  var CSRF_TOKEN = {{ csrf_token|tojson }};
+  var UNIT = {{ unit|tojson }};
+
+  /* ---------------- 0. 基础工具（与 dashboard 同口径） ---------------- */
+  function $(id) { return document.getElementById(id); }
+  function esc(v) { return String(v).replace(/[&<>"']/g, function (c) {
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+  function setText(el, txt) { if (el) el.textContent = txt; }
+  function reduceMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+  /* 顶栏状态区由 _shell.html 的 shell_scripts() 提供，它在页面脚本【之后】执行，
+     所以必须调用时再取（不能在脚本开头缓存，否则永远拿到空实现）。 */
+  var BG_NOOP = { setShellSim: function () {}, setShellConn: function () {}, setShellBell: function () {} };
+  function bg() { return window.BGShell || BG_NOOP; }
+
+  /* 等级色阶：key 与后端规则口径一致，颜色为白底可读的浅色版本 */
+  var SEV = {
+    0: { key: 'normal',  color: '#15803d', label: '安全' },
+    1: { key: 'warn',    color: '#b45309', label: '预警' },
+    2: { key: 'alarm',   color: '#c2410c', label: '报警' },
+    3: { key: 'crit',    color: '#be123c', label: '严重报警' },
+    4: { key: 'offline', color: '#6b7280', label: '设备离线' }
+  };
+  function levelClass(l) { return l === '严重报警' ? 'lv-crit' : (l === '报警' ? 'lv-alarm' : (l === '预警' ? 'lv-warn' : '')); }
+  function badgeClass(l) { return l === '严重报警' ? 'crit' : (l === '报警' ? 'alarm' : (l === '预警' ? 'warn' : 'info')); }
+
+  /* ---------------- 数字 count-up（reduced-motion 下直接赋值） ---------------- */
+  var numPrev = Object.create(null);
+  var numAnims = Object.create(null);
+  function setNum(el, value, opt) {
+    if (!el) return;
+    opt = opt || {};
+    if (value === null || value === undefined || !isFinite(value)) { el.textContent = '--'; numPrev[el.id] = null; return; }
+    var dec = opt.dec || 0;
+    var fmt = opt.fmt || function (v) { return v.toFixed(dec) + (opt.suffix || ''); };
+    var key = el.id || 'anon';
+    var prev = numPrev[key];
+    numPrev[key] = value;
+    var target = fmt(value);
+    var raf = window.requestAnimationFrame;
+    if (reduceMotion() || !raf || prev === null || prev === undefined) { el.textContent = target; return; }
+    if (Math.abs(prev - value) < Math.pow(10, -dec) / 2) { el.textContent = target; return; }
+    if (numAnims[key]) { raf.call(window, numAnims[key]); numAnims[key] = null; }
+    var from = prev, span = value - prev, t0 = null, DUR = opt.dur || 620;
+    el.classList.add('flash');
+    window.setTimeout(function () { el.classList.remove('flash'); }, 780);
+    numAnims[key] = function step(ts) {
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / DUR);
+      var e = 1 - Math.pow(1 - p, 3);               // easeOutCubic
+      el.textContent = fmt(from + span * e);
+      if (p < 1) { numAnims[key] = step; raf.call(window, step); } else { numAnims[key] = null; }
+    };
+    raf.call(window, numAnims[key]);
+  }
+
+  /* ---------------- 页面缩放因子（与 <style> 里的 --pg-s 同一定义，只用于 JS 侧尺寸） ----------------
+     环形图的中心字号写在 ECharts option 里（CSS 变量管不到 <canvas>），所以这里按同一公式取一次。
+     口径：1440px 宽度 = 1.0，线性涨到 2592px 的 1.25 为止（1680→1.208、1920→1.25）。
+     ⚠️ 必须和 CSS 里那条公式保持一致（同一个 clamp、同一个除数 1152px），
+        否则画布里的字号会和页面字号不同步。 */
+  function pageScale() {
+    var s = 1 + (window.innerWidth - 1440) / 1152;
+    return Math.min(1.25, Math.max(1, s));
+  }
+
+  /* ====================================================================
+     ① 报警分级环形图（浅色版）
+     环上至少保留 2 个数据项（多出的透明占位项），否则 ECharts 单数据项饼图不渲染中心文字。
+     ==================================================================== */
+  var AXIS_LABEL = '#6b7280';
+  var TOOLTIP = {
+    backgroundColor: 'rgba(255,255,255,.98)', borderColor: '#e5e8eb', borderWidth: 1,
+    textStyle: { color: '#1f2937', fontSize: 12 },
+    axisPointer: { lineStyle: { color: '#16a34a' } }
+  };
+  function donutOption(nWarn, nAlarm, nCrit, total) {
+    var hasData = (nWarn + nAlarm + nCrit) > 0;
+    var fontA = Math.round(26 * pageScale());   /* 中心总数，跟随页面缩放（CSS 管不到 canvas） */
+    var fontB = Math.round(11 * pageScale());
+    var ring = hasData
+      ? [
+          { name: '预警', value: nWarn, itemStyle: { color: SEV[1].color } },
+          { name: '报警', value: nAlarm, itemStyle: { color: SEV[2].color } },
+          { name: '严重报警', value: nCrit, itemStyle: { color: SEV[3].color } },
+          { name: '', value: 0.0001, itemStyle: { color: 'transparent' } }
+        ]
+      : [
+          { name: '暂无报警', value: 1, itemStyle: { color: 'rgba(148, 163, 184, .35)' } },
+          { name: '', value: 0.0001, itemStyle: { color: 'transparent' } }
+        ];
+    return {
+      animationDuration: 600, animationDurationUpdate: 260, animationEasingUpdate: 'cubicOut',
+      tooltip: Object.assign({ trigger: 'item' }, TOOLTIP, {
+        formatter: function (p) {
+          return p.value ? ('<b>' + esc(p.name) + '</b><br/>数量：' + p.value + ' 条 · 占比 ' + p.percent + '%') : '';
+        }
+      }),
+      series: [{
+        type: 'pie', center: ['50%', '50%'], radius: ['58%', '76%'], avoidLabelOverlap: true,
+        itemStyle: { borderColor: '#ffffff', borderWidth: 2 },
+        label: { show: true, position: 'center',
+          formatter: function () { return '{a|' + total + '}\n{b|报警总数}'; },
+          rich: { a: { color: '#1f2937', fontSize: fontA, fontWeight: 700, fontFamily: 'Microsoft YaHei' },
+                  b: { color: '#6b7280', fontSize: fontB, padding: [4, 0, 0, 0] } } },
+        labelLine: { show: false },
+        emphasis: { scale: true, scaleSize: 4, itemStyle: { shadowBlur: 18, shadowColor: 'rgba(22, 163, 74, .35)' } },
+        data: ring
+      }]
+    };
+  }
+
+  var HAS_ECHARTS = !!(window.echarts && window.echarts.init);
+  var donutChart = null;
+  var chartSig = { donut: '' };
+  if (HAS_ECHARTS) {
+    donutChart = echarts.init($('donut'));
+    donutChart.setOption(donutOption(0, 0, 0, 0), { notMerge: true });
+  } else {
+    /* 诚实降级：图表库没加载就如实说明，绝不画假图（数字图例仍每秒刷新） */
+    var host = $('donut');
+    if (host) host.innerHTML = '<p class="pa-empty">图表库未加载</p>';
+  }
+  /* 窗口尺寸变化时重算画布尺寸与中心字号：把重新 setOption 的活儿交给下一帧 refresh()
+     （refresh 里有 donutSig 节流，必须显式清掉签名，否则字号变了也不重绘）。 */
+  function resizeCharts() {
+    if (!donutChart) return;
+    donutChart.resize();
+    chartSig.donut = '';
+  }
+
+  /* ====================================================================
+     ② 告警跑马灯：内容变化时重建 DOM 并按时长滚动，节点复制实现无缝
+     ==================================================================== */
+  var tickerSig = '';
+  function renderTicker(alarms) {
+    var tk = $('alarmTicker'), track = $('tickerTrack');
+    if (!tk || !track) return;
+    var sig, cls, badge, html;
+
+    if (!alarms.length) {
+      /* 无报警：如实显示运行正常，不编造告警 */
+      sig = 'ok'; cls = 'ok'; badge = '状态';
+      html = '<span class="tk-chip ok"><i></i>系统运行正常 · 暂无告警</span>' +
+             '<span class="tk-chip info"><i></i>等待下一次采样…</span>';
+    } else {
+      var recent = alarms.slice(-6).reverse();          // 最新 6 条，最新在前
+      var RANK = { '严重报警': 3, '报警': 2, '预警': 1 };
+      /* 横条等级取最近若干条中的最高等级，避免新旧报警并存时漏掉严重等级 */
+      var top = recent.reduce(function (acc, a) {
+        return (RANK[a.type] || 0) > (RANK[acc.type] || 0) ? a : acc;
+      }, recent[0]);
+      sig = recent.map(function (a) { return a.id; }).join(',');
+      cls = badgeClass(top.type);
+      badge = '最新 ' + recent[0].type;
+      html = recent.map(function (a) {
+        return '<span class="tk-chip ' + badgeClass(a.type) + '">' +
+                 '<i></i><em>' + esc(a.type) + '</em>' +
+                 '<span class="tk-rule">' + esc(a.rule) + '</span>' +
+                 '<span class="tk-rsn">' + esc(a.reason) + '</span>' +
+                 '<span class="tk-tm">' + esc(a.time) + '</span>' +
+               '</span>';
+      }).join('');
+    }
+    tk.className = 'alarm-ticker ' + cls;
+    var badgeEl = tk.querySelector('.tk-badge');
+    if (badgeEl) badgeEl.textContent = badge;
+    if (sig === tickerSig) return;                       // 内容未变则不重建（避免每帧重启动画）
+    tickerSig = sig;
+    /* 轨道内容复制一份（第二份 aria-hidden），位移 -50% 时画面完全重合 → 无缝 */
+    track.innerHTML = html + '<span aria-hidden="true" style="display:contents">' + html + '</span>';
+    var w = track.scrollWidth || 0;
+    track.style.animationDuration = Math.max(20, Math.round(w / 55)) + 's';   // 约 55px/s 匀速
+  }
+
+  /* ====================================================================
+     ③ 报警处置队列（保留原有「点击行看详情 + 确认处理」交互）
+     ==================================================================== */
+  var selectedAlarmId = null;
+  /* 用 null 而不是 '' 作初值：无报警时 sig 恰好也是 ''，用 '' 会让首屏/清空后
+     「暂无报警，系统运行正常」这行空态永远渲染不出来（原页面的隐性缺陷，此处如实修正）。 */
+  var tableSig = null;
+
+  function selectAlarm(id) {
+    selectedAlarmId = (selectedAlarmId === id) ? null : id;   // 再点一次折叠
+    renderAlarmDetail();
+  }
+  function renderAlarmDetail() {
+    var box = $('alarmDetail');
+    if (!box) return;
+    if (selectedAlarmId === null || selectedAlarmId === undefined) { box.className = 'alarm-detail'; box.innerHTML = ''; return; }
+    var a = (window._alarms || []).find(function (x) { return x.id === selectedAlarmId; });
+    if (!a) { box.className = 'alarm-detail'; box.innerHTML = ''; return; }
+    box.className = 'alarm-detail open';
+    /* 设备事件（离线/恢复）本身没有应变读数，如实标注而不是拿 0 顶替 */
+    var isDevice = (a.rule === '设备离线' || a.rule === '设备恢复');
+    var strainText = isDevice ? '—（设备事件，无应变值）' : esc(a.strain) + ' ' + UNIT;
+    box.innerHTML =
+      '<div class="d-title">报警 #' + a.id + ' · ' + esc(a.rule) + '</div>' +
+      '<div class="d-reason">' + esc(a.reason) + '</div>' +
+      '<div class="d-meta">' +
+        '<span class="tag">触发规则：<b>' + esc(a.rule) + '</b></span>' +
+        '<span class="tag">触发值：<b>' + strainText + '</b></span>' +
+        '<span class="tag">触发时间：<b>' + esc(a.time) + '</b></span>' +
+        '<span class="tag">处置状态：<b>' + esc(a.status) + '</b></span>' +
+      '</div>' +
+      '<div class="d-actions">' +
+        (a.status === '未处理'
+          ? '<button class="btn btn-blue" type="button" onclick="acknowledgeAlarm(' + a.id + ')">确认处理</button>'
+          : '<span class="done-tag" style="align-self:center">该报警已处理</span>') +
+        '<button class="btn btn-ghost" type="button" onclick="selectAlarm(' + a.id + ')">收起</button>' +
+      '</div>';
+  }
+
+  function renderTable(alarms) {
+    var sig = alarms.map(function (a) { return a.id + ':' + a.status; }).join('|');
+    if (sig === tableSig) return;                        // 内容不变不重建（消除每秒闪烁与悬停丢失）
+    tableSig = sig;
+    var maxId = alarms.length ? Math.max.apply(null, alarms.map(function (a) { return a.id; })) : 0;
+    var hasNew = window._lastMaxId !== null && window._lastMaxId !== undefined && maxId > window._lastMaxId;
+    window._lastMaxId = maxId;
+    var rows = alarms.slice().reverse().map(function (a) {
+      var isDevice = (a.rule === '设备离线' || a.rule === '设备恢复');
+      var rowCls = (hasNew && a.id === maxId) ? ' class="row-new"' : '';
+      return '<tr' + rowCls + ' onclick="selectAlarm(' + a.id + ')">' +
+        '<td data-label="时间">' + esc(a.time) + '</td>' +
+        '<td data-label="应变指标" class="' + levelClass(a.type) + '">' + (isDevice ? '--' : esc(a.strain)) + '</td>' +
+        '<td data-label="等级"><span class="badge ' + badgeClass(a.type) + '">' + esc(a.type) + '</span></td>' +
+        '<td data-label="规则">' + esc(a.rule) + '</td>' +
+        '<td data-label="原因" class="reason-cell">' + esc(a.reason) + '</td>' +
+        '<td data-label="状态">' + esc(a.status) + '</td>' +
+        '<td data-label="操作">' + (a.status === '未处理'
+          ? '<button class="ack-btn" type="button" onclick="event.stopPropagation();acknowledgeAlarm(' + a.id + ')">确认处理</button>'
+          : '<span class="done-tag">已完成</span>') + '</td>' +
+      '</tr>';
+    }).join('');
+    /* 空态行加 .empty-row：桌面端由 CSS 把它撑满表格区（无报警时不留大片空白），
+       手机端不影响卡片化（td.empty 规则照旧）。 */
+    $('alarmTable').innerHTML = rows ||
+      '<tr class="empty-row"><td colspan="7" class="empty">暂无报警，系统运行正常</td></tr>';
+    renderAlarmDetail();
+  }
+
+  /* ---------------- 连接状态灯（本页只有 #connectionStatus 与页脚 #footDot） ---------------- */
+  function setConn(ok, msg) {
+    var el = $('connectionStatus');
+    if (el) { el.className = ok ? 'conn' : 'conn error'; el.textContent = msg; }
+    var dot = $('footDot');
+    if (dot) dot.className = 'foot-dot' + (ok ? '' : ' err');
+  }
+
+  /* ====================================================================
+     ④ 主刷新循环：每 1 秒轮询 /api/data，统计 + 队列 + 环形图同源更新
+     ==================================================================== */
+  async function refresh() {
+    try {
+      var r = await fetch('/api/data');
+      if (r.status === 401) { window.location.href = '/login'; return; }
+      if (!r.ok) throw new Error('请求失败：' + r.status);
+      var d = await r.json();
+      var alarms = d.alarms || [];
+      window._alarms = alarms;
+
+      var isSim = d.source === 'sim';
+      var pending = alarms.filter(function (a) { return a.status === '未处理'; }).length;
+      var nWarn = alarms.filter(function (a) { return a.type === '预警'; }).length;
+      var nAlarm = alarms.filter(function (a) { return a.type === '报警'; }).length;
+      var nCrit = alarms.filter(function (a) { return a.type === '严重报警'; }).length;
+
+      /* ---- 指标卡：待处置 / 预警 / 报警 / 严重报警 ---- */
+      var pn = $('pendingNum');
+      setNum(pn, pending, { dec: 0 });
+      if (pn) pn.className = 'pending-num num ' + (pending > 0 ? 'crit' : 'ok');
+      setNum($('cntWarn'), nWarn, { dec: 0 });
+      setNum($('cntAlarm'), nAlarm, { dec: 0 });
+      setNum($('cntCrit'), nCrit, { dec: 0 });
+
+      /* ---- 环形图图例数字 + 已处理 / 报警总数 ---- */
+      setNum($('donutWarn'), nWarn, { dec: 0 });
+      setNum($('donutAlarm'), nAlarm, { dec: 0 });
+      setNum($('donutCrit'), nCrit, { dec: 0 });
+      setNum($('heroAck'), alarms.length - pending, { dec: 0 });
+      setNum($('heroTotal'), alarms.length, { dec: 0 });
+
+      /* ---- 环形图（donutSig 节流：等级数量或总数未变就不重绘） ---- */
+      var donutSig = nWarn + '/' + nAlarm + '/' + nCrit + '/' + alarms.length;
+      if (HAS_ECHARTS && donutSig !== chartSig.donut) {
+        chartSig.donut = donutSig;
+        donutChart.setOption(donutOption(nWarn, nAlarm, nCrit, alarms.length), { notMerge: true });
+      }
+
+      /* ---- 跑马灯 + 处置队列表格 + 页脚刷新时刻 ---- */
+      renderTicker(alarms);
+      renderTable(alarms);
+      setText($('footLast'), d.last_sample_time || '--');
+      setConn(true, '数据连接正常');
+
+      /* ---- 顶栏状态区（全站一致） ---- */
+      bg().setShellSim(isSim);
+      bg().setShellConn(isSim ? 'sim' : 'ok', isSim ? '模拟数据源 · 每秒刷新' : '数据连接正常');
+      bg().setShellBell(pending);
+    } catch (e) {
+      console.error(e);
+      setConn(false, '数据连接失败，请检查服务是否运行');
+      bg().setShellConn('error', '接口断开');
+    }
+  }
+
+  /* ---------------- 操作类接口（保持原有交互与 CSRF 头） ---------------- */
+  async function clearAlarms() {
+    if (!confirm('确定清除当前报警和历史报警记录吗？')) return;
+    try { var r = await fetch('/api/clear_alarms', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN } });
+      if (r.status === 401) { location.href = '/login'; return; } if (!r.ok) throw 0;
+      selectedAlarmId = null; tableSig = null; tickerSig = ''; refresh();
+    } catch (e) { setConn(false, '清除报警失败'); }
+  }
+  async function acknowledgeAlarm(id) {
+    try { var r = await fetch('/api/acknowledge_alarm/' + id, { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN } });
+      if (r.status === 401) { location.href = '/login'; return; } if (!r.ok) throw 0; refresh();
+    } catch (e) { setConn(false, '确认报警失败'); }
+  }
+  async function clearData() {
+    if (!confirm('确定清除当前数据和历史数据记录吗？')) return;
+    try { var r = await fetch('/api/clear_data', { method: 'POST', headers: { 'X-CSRF-Token': CSRF_TOKEN } });
+      if (r.status === 401) { location.href = '/login'; return; } if (!r.ok) throw 0; refresh();
+    } catch (e) { setConn(false, '清除数据失败'); }
+  }
+
+  /* 供内联 onclick 使用的全局入口 */
+  window.selectAlarm = selectAlarm;
+  window.acknowledgeAlarm = acknowledgeAlarm;
+  window.clearAlarms = clearAlarms;
+  window.clearData = clearData;
+
+  /* ---------------- 启动 ---------------- */
+  resizeCharts();
+  setConn(true, '数据连接正常');
+  refresh();
+  window.addEventListener('resize', onResize);
+  window.addEventListener('load', onResize);
+  window.setInterval(refresh, 1000);
+
+  /* ====================================================================
+     ⑥ 环形图自适应卡片高度
+     表格卡把 .pa-2col 拉高后（无报警时尤其明显），150px 的环形图会孤零零悬在
+     680px 高的卡片中间。这里量一次卡片高度，把多余高度折成环形图直径，
+     同时按比例放大图例与「已处理 / 报警总数」胶囊，让左卡片真的被填满。
+     只在「可用直径真的变了」时写 DOM，避免每秒轮询都动一次样式。
+     ==================================================================== */
+  /* 图例的自然宽度（= 圆点 + 文字 + 数字 + 内边距，实测 true fit-content）。
+     直接用 legend.scrollWidth 会偏低（图例此时可能已被 flex 压窄、外层还有富余），
+     所以临时插一个 width:max-content 的克隆量一次真实宽度。 */
+  function legendNeed(legend) {
+    if (!legend) return 0;
+    var probe = legend.cloneNode(true);
+    probe.style.cssText = 'position:absolute;left:-9999px;top:0;width:max-content;max-width:none;' +
+      'visibility:hidden;pointer-events:none';
+    legend.parentNode.appendChild(probe);
+    var w = probe.getBoundingClientRect().width;
+    probe.remove();
+    return w;
+  }
+
+  var donutSize = 0;
+  var cardSig = '';
+  function layoutFill() {
+    if (window.innerWidth <= 768) return;             // 手机端走 app.css 的固定 128px，不接管
+    var host = $('donut');
+    var card = host && host.closest ? host.closest('.card') : null;
+    var page = document.querySelector('.sh-page');
+    if (!host || !card || !page) return;
+    /* 以卡片尺寸变化为触发条件，而不是以「算出来的环大小」为条件：
+       .pa-donut 是 flex:1（本身不撑高卡片），改环的尺寸不会反向改变卡片高度，
+       所以这里不会自激；同时能覆盖「首屏量得太早」和「窗口 resize」两种情况。 */
+    var sig = card.clientWidth + 'x' + card.clientHeight;
+    if (sig === cardSig) return;
+    cardSig = sig;
+    var pageFont = parseFloat(getComputedStyle(page).fontSize) || 13;
+    var s = pageFont / 13;                            // 与 CSS 的 --pg-s 同源（读实际生效的字号反推）
+    var hostParent = host.parentNode;
+    var gap = parseFloat(getComputedStyle(hostParent).gap) || 14;
+    var padX = parseFloat(getComputedStyle(card).paddingLeft) || 0;
+    var contentW = card.clientWidth - padX * 2;
+    var availH = card.clientHeight - (parseFloat(getComputedStyle(card).paddingTop) || 0) * 2 - 60;
+    /* 横向预算：内容宽先扣掉图例自然宽与间距，剩下的给环。
+       ⚠️ 这里不能再设 150px 的地板：卡片内容宽一旦小于「环地板 + 图例 + 间距」，
+       超出部分会溢出到卡片外（实测 1680 宽下图例被右边界裁掉 10px）。
+       所以只保留一个 96px 的显示下限（环再小也还是能看的饼图），
+       真正的兜底是 .pa-donut 的 flex-wrap —— 极端字号下图例会换行到环下方，而不是被裁。 */
+    var legendW = legendNeed(card.querySelector('.donut-legend'));
+    var availW = contentW - legendW - gap;
+    var size = Math.round(Math.min(320 * s, availH - 30 * s, availW * 1.15));
+    if (size < 96) size = 96;
+    if (Math.abs(size - donutSize) < 1) return;       // 环大小没变就不动 DOM
+    donutSize = size;
+    card.style.setProperty('--donut', size + 'px');
+    card.style.setProperty('--dlw', Math.round(Math.max(200 * s, legendW + 14)) + 'px');
+    card.style.setProperty('--tier-h', Math.round(Math.max(32 * s, size * 0.22)) + 'px');
+    resizeCharts();
+  }
+
+  /* resize / load 统一入口：先量布局再重绘画布 */
+  function onResize() {
+    cardSig = '';                                     // 强制重新量一次
+    layoutFill();
+    resizeCharts();
+  }
+
+  /* 首帧、load 之后、以及每秒轮询里各量一次：卡片高度在首屏（字体/滚动条稳定后）会变一次，
+     轮询调用是无副作用的（尺寸没变就直接 return）。 */
+  layoutFill();
+  window.addEventListener('load', onResize);
+  window.setInterval(layoutFill, 1000);
+})();
+</script>
+
+{# 共享骨架行为：桌面收起/展开 + localStorage 记忆 + 移动端抽屉 #}
+{{ shell.shell_scripts() }}
+</body>
+</html>

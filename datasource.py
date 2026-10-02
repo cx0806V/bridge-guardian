@@ -56,8 +56,11 @@ class SimulatedSource(DataSource):
 
     场景说明（与演示剧本对应）：
     - normal  正常运行：围绕 80 小幅波动
-    - warn    预警：稳在 108~115（阈值 120 的 0.9~0.96，接近但未越线）
-    - alarm   报警：稳在 132~140（超过阈值 120，落入「报警」分级）
+    - warn    预警：稳在 123~131（阈值的 1.0~1.1 倍，落入「预警」分级；
+              注：按 `rules.py::_level` 与前端 `riskOf()` 的统一口径，「预警」的判据是
+              「超过阈值但不超过 1.1 倍阈值」，因此这里必须越线，否则大屏会显示“安全”，
+              现场点「预警」按钮时会自相矛盾）
+    - alarm   报警：稳在 132~140（阈值的 1.1~1.2 倍，落入「报警」分级）
     - critical 严重报警：稳在 148~160（超过阈值 1.2 倍，落入「严重报警」）
     - offline 设备离线：read_sample 返回 None，健康度如实离线（不伪造数据）
     - recover 设备恢复：从离线切回 normal 前的过渡，恢复在线
@@ -93,7 +96,8 @@ class SimulatedSource(DataSource):
             self.value += random.uniform(-3, 3)
             self.value = round(max(50, min(110, self.value)), 2)
         elif s == "warn":
-            self.value = round(random.uniform(108, 115), 2)
+            # 预警档：必须高于阈值（默认 120）才落在「预警」分级，见类文档说明
+            self.value = round(random.uniform(123, 131), 2)
         elif s == "alarm":
             self.value = round(random.uniform(132, 140), 2)
         elif s == "critical":

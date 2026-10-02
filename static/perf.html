@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>3D 性能自测 · 桥体卫士</title>
+<!-- 内联 SVG 图标（data URI）：避免浏览器探测 /favicon.ico 产生 404 控制台报错，本身不引外部资源 -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ffffff'/%3E%3Cpath d='M5 23h22M5 23c3-6 7.5-9 11-9s8 3 11 9M16 14V7M9 7h14' fill='none' stroke='%2316a34a' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<!-- ============================================================================
+     /static/perf.html —— P2 真机性能自测页（契约 §3.7）
+     ----------------------------------------------------------------------------
+     为什么这么做：
+       · 本机只能跑 headless Edge + SwiftShader 软件渲染，得到的 fps 不能当真机 fps；
+         真机数字必须由演示机/手机实测回填。这一页就是"一次就能跑通、不用开控制台"的
+         测量工具：同源 iframe 加载 /dashboard，等 TWIN_3D_READY，按固定协议走一遍
+         视角运动，每 250ms 采样 window.TWIN_PERF，最后给结论表 + 一键导出 JSON。
+       · 完全离线自足：不引外部字体/脚本/图片，纯内联 CSS + 原生 JS。
+         （clipboard / Blob 在老环境不可用时都有降级路径，绝不把用户卡在控制台里。）
+       · 协议固定、不依赖合成输入（不用伪造鼠标事件），同一台设备每次跑结果可比。
+     ============================================================================ -->
+<style>
+  :root {
+    --bg: #eef2f4; --panel: #ffffff; --text: #1f2937; --strong: #111827;
+    --muted: #6b7280; --border: #d9dee3; --accent: #16a34a; --accent-soft: #ecfdf3;
+    --ok: #15803d; --warn: #b45309; --bad: #be123c;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text); padding: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-size: 14px; line-height: 1.5;
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .brand b { font-size: 17px; color: var(--strong); }
+  .brand .sub { display: block; font-size: 12px; color: var(--muted); }
+  .acts { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px; }
+  .btn {
+    font: inherit; font-size: 13px; cursor: pointer; padding: 9px 14px; border-radius: 9px;
+    background: #fff; border: 1px solid var(--border); color: var(--text); white-space: nowrap;
+  }
+  .btn:hover { border-color: rgba(22,163,74,.4); color: var(--accent); }
+  .btn[disabled] { opacity: .45; cursor: not-allowed; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 700; }
+  .btn.primary:hover { color: #fff; }
+  .status {
+    padding: 9px 12px; border-radius: 10px; background: #fff; border: 1px solid var(--border);
+    font-size: 13px; margin-bottom: 10px; word-break: break-word;
+  }
+  .status.err { color: var(--bad); border-color: rgba(190,18,60,.35); background: #fff1f2; }
+  .status.ok { color: var(--ok); border-color: rgba(21,128,61,.3); background: var(--accent-soft); }
+  .status .prog { display: block; margin-top: 6px; height: 6px; border-radius: 3px; background: #e5e7eb; overflow: hidden; }
+  .status .prog i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s; }
+  .stage { position: relative; height: 62vh; min-height: 300px; background: #fff; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+  .stage iframe { display: block; width: 100%; height: 100%; border: 0; }
+  .stage .cap { position: absolute; left: 8px; bottom: 6px; z-index: 2; font-size: 11px; color: var(--muted);
+    background: rgba(255,255,255,.9); border-radius: 6px; padding: 2px 7px; pointer-events: none; }
+  body.big .stage { position: fixed; inset: 0; height: auto; min-height: 0; border-radius: 0; border: 0; z-index: 50; }
+  body.big .stage .cap { display: none; }
+  body.big #btnBig { position: fixed; right: 12px; top: 12px; z-index: 60; box-shadow: 0 4px 14px rgba(16,24,40,.18); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 12px; }
+  .card h2 { margin: 0 0 8px; font-size: 14px; color: var(--strong); }
+  .card[hidden] { display: none; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid #eef1f4; vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 12.5px; }
+  .kv .k { color: var(--muted); }
+  .kv .v { color: var(--strong); word-break: break-all; }
+  .pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+  .pill.ok { background: var(--accent-soft); color: var(--ok); border: 1px solid rgba(21,128,61,.35); }
+  .pill.bad { background: #fff1f2; color: var(--bad); border: 1px solid rgba(190,18,60,.35); }
+  .pill.warn { background: #fffbeb; color: var(--warn); border: 1px solid rgba(180,83,9,.35); }
+  .pill.mute { background: #f3f4f6; color: var(--muted); border: 1px solid var(--border); }
+  .note { font-size: 12px; color: var(--muted); margin-top: 8px; word-break: break-word; }
+  ul.tips { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--muted); }
+  code { background: #f3f4f6; padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+  details.card summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--strong); }
+  textarea {
+    width: 100%; height: 240px; margin-top: 8px; font-family: ui-monospace, Consolas, monospace;
+    font-size: 11.5px; line-height: 1.45; border: 1px solid var(--border); border-radius: 8px; padding: 8px;
+    background: #fbfcfd; color: var(--text); resize: vertical;
+  }
+  .login-note { background: #fffbeb; border: 1px solid rgba(180,83,9,.35); color: var(--warn);
+    padding: 9px 12px; border-radius: 10px; margin-top: 10px; font-size: 13px; }
+  .login-note[hidden] { display: none; }
+  @media (min-width: 900px) { .stage { height: 68vh; } body { padding: 16px 20px 28px; } }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div class="brand">
+    <b>3D 性能自测</b>
+    <span class="sub">固定协议 · 同源 iframe 加载 /dashboard · 结果可导出 JSON（离线可用）</span>
+  </div>
+  <div class="acts">
+    <button id="btnRun" class="btn primary" type="button" disabled>开始测量</button>
+    <button id="btnBig" class="btn" type="button">放大测量框</button>
+    <button id="btnDownload" class="btn" type="button" disabled>下载 JSON</button>
+    <button id="btnCopy" class="btn" type="button" disabled>复制 JSON</button>
+  </div>
+</div>
+
+<div id="status" class="status">正在准备：等待测量框内的 3D 场景就绪…</div>
+
+<div class="login-note" id="loginNote" hidden>
+  测量框里出现的是<b>登录页</b>：请直接在下方测量框内登录（同一 Cookie），登录跳回 /dashboard 后本页会自动继续。
+  也可以先在新标签打开 <a href="/dashboard" target="_blank" rel="noopener">/dashboard</a> 登录，再回到本页重跑。
+</div>
+
+<div class="stage" id="stage">
+  <iframe id="frame" src="/dashboard" title="被测页面 /dashboard"></iframe>
+  <div class="cap">被测页面：/dashboard · 测量框尺寸 <span id="frameSize">--</span></div>
+</div>
+
+<section class="card" id="verdictCard" hidden>
+  <h2>结论</h2>
+  <div id="verdict"></div>
+</section>
+
+<section class="card" id="deviceCard" hidden>
+  <h2>设备信息</h2>
+  <div id="device"></div>
+</section>
+
+<section class="card" id="phaseCard" hidden>
+  <h2>分阶段结果（交互态帧率才是设备能力；空载态受 idleFps 上限约束）</h2>
+  <div id="phases"></div>
+  <div class="note" id="phaseNote"></div>
+</section>
+
+<details class="card" id="rawCard">
+  <summary>原始 JSON（可直接全选复制发给工程师）</summary>
+  <textarea id="raw" readonly spellcheck="false" placeholder="测量完成后这里会显示完整 JSON"></textarea>
+</details>
+
+<script>
+/* ============================================================================
+ * 固定协议（契约 §3.7，可复现、不依赖合成输入）：
+ *   预热 2s → 静止 3s → 预设飞行（全桥→主跨→桥塔→峡谷，各 1.2s）→ 自动旋转 3s
+ *            → 复位 → 静止 3s
+ * 采样：每 250ms 读一次 iframe 的 window.TWIN_PERF（与 api.perf 同一引用）。
+ * fps 口径：用 perf.renders 的增量 ÷ 阶段真实时长（真渲染帧数），
+ *          不用「采样到的 perf.fps 平均值」——后者会被采样相位带偏。
+ * 帧耗时 p50/p95：来自各次采样的 perf.frameMs / perf.frameMsP95（均为场景侧 60 帧滑动窗口），
+ *          这里再做一次分位数，口径写进 JSON 的 measure 字段，绝不糊弄。
+ * ==========================================================================*/
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var frame = $('frame');
+  var statusEl = $('status');
+  var WARMUP_MS = 2000;
+  var SAMPLE_MS = 250;
+  var READY_TIMEOUT_MS = 120000;
+
+  var AUTO = /(^|[?&])auto=1(&|$)/.test(location.search);
+
+  var STEPS = [
+    { key: 'idle1', label: '静止 3s（空载）', kind: 'idle', ms: 3000,
+      act: function (api) { api.applyPreset('full', 1); api.setAutoRotate(false); },
+      note: '先瞬间对齐到全桥预设，作为固定起点' },
+    { key: 'fly1', label: '预设飞行 · 全桥（1.2s）', kind: 'interact', ms: 1200,
+      act: function (api) { api.applyPreset('full'); },
+      note: '起点与全桥重合，相机不动但飞行态仍按目标帧率满帧渲染' },
+    { key: 'fly2', label: '预设飞行 · 主跨（1.2s）', kind: 'interact', ms: 1200,
+      act: function (api) { api.applyPreset('span'); } },
+    { key: 'fly3', label: '预设飞行 · 桥塔（1.2s）', kind: 'interact', ms: 1200,
+      act: function (api) { api.applyPreset('tower'); } },
+    { key: 'fly4', label: '预设飞行 · 峡谷（1.2s）', kind: 'interact', ms: 1200,
+      act: function (api) { api.applyPreset('canyon'); } },
+    { key: 'rotate', label: '自动旋转 3s', kind: 'interact', ms: 3000,
+      act: function (api) { api.setAutoRotate(true); } },
+    { key: 'reset', label: '复位到全桥', kind: 'setup', ms: 1500,
+      act: function (api) { api.setAutoRotate(false); api.applyPreset('full'); } },
+    { key: 'idle2', label: '静止 3s（空载）', kind: 'idle', ms: 3000, act: null },
+  ];
+
+  var S = {
+    ready: false, running: false, done: false, failed: null,
+    samples: [], phases: [], notes: [],
+    currentKey: 'pre', t0: 0, refreshHz: null, device: null,
+    result: null, stepIndex: -1,
+  };
+
+  /* ---------------------------------------------------------------- 小工具 */
+  function num(v) { return (typeof v === 'number' && isFinite(v)) ? v : null; }
+  function fixed(v, d) { var n = num(v); return n === null ? '--' : n.toFixed(d); }
+  function int0(v) { var n = num(v); return n === null ? '--' : String(Math.round(n)); }
+  function grp(v) {
+    var n = num(v);
+    if (n === null) return '--';
+    return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+  function esc(s) {
+    return String(s === undefined || s === null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function quantile(arr, p) {
+    var a = arr.filter(function (v) { return num(v) !== null; }).slice().sort(function (x, y) { return x - y; });
+    if (!a.length) return null;
+    var i = Math.min(a.length - 1, Math.max(0, Math.round((a.length - 1) * p)));
+    return a[i];
+  }
+  function mean(arr) {
+    var a = arr.filter(function (v) { return num(v) !== null; });
+    if (!a.length) return null;
+    var s = 0;
+    for (var i = 0; i < a.length; i++) s += a[i];
+    return s / a.length;
+  }
+  function stamp() {
+    var d = new Date(), p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' +
+      p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  }
+  function setStatus(text, cls, progress) {
+    statusEl.className = 'status' + (cls ? ' ' + cls : '');
+    statusEl.innerHTML = esc(text) +
+      (progress === undefined ? '' :
+        '<span class="prog"><i style="width:' + Math.round(progress * 100) + '%"></i></span>');
+  }
+
+  /* --------------------------------------------------- iframe 侧数据访问器 */
+  function frameWin() { try { return frame.contentWindow; } catch (e) { return null; } }
+  function framePath() { try { return frame.contentWindow.location.pathname; } catch (e) { return ''; } }
+  function framePerf() {
+    var w = frameWin();
+    try { return (w && w.TWIN_PERF) ? w.TWIN_PERF : null; } catch (e) { return null; }
+  }
+  function frameApi() {
+    var w = frameWin();
+    try { return (w && w.TwinScene) ? w.TwinScene : null; } catch (e) { return null; }
+  }
+
+  /* ------------------------------------------------------- 设备信息（自探测） */
+  function webglInfo() {
+    var out = { ok: false };
+    try {
+      var c = document.createElement('canvas');
+      var gl = c.getContext('webgl2') || c.getContext('webgl') || c.getContext('experimental-webgl');
+      if (!gl) { out.error = 'getContext("webgl2"/"webgl") 返回 null'; return out; }
+      var dbg = gl.getExtension ? gl.getExtension('WEBGL_debug_renderer_info') : null;
+      out.ok = true;
+      out.version = String(gl.getParameter(gl.VERSION));
+      out.vendor = String(gl.getParameter(gl.VENDOR));
+      out.renderer = String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+      out.unmaskedVendor = dbg ? String(gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL)) : '';
+      out.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+      out.msaaSamples = gl.getParameter(gl.SAMPLES) || 0;
+      out.softwareLikely = /swiftshader|software|llvmpipe|basic render/i.test(out.renderer);
+      var lose = gl.getExtension ? gl.getExtension('WEBGL_lose_context') : null;
+      if (lose) lose.loseContext();
+      return out;
+    } catch (e) { out.error = String((e && e.message) || e); return out; }
+  }
+
+  function collectDevice() {
+    var d = {
+      ua: navigator.userAgent,
+      platform: navigator.platform || '',
+      dpr: window.devicePixelRatio || 1,
+      screen: [screen.width, screen.height],
+      availScreen: [screen.availWidth, screen.availHeight],
+      colorDepth: screen.colorDepth,
+      viewport: [window.innerWidth, window.innerHeight],
+      cores: navigator.hardwareConcurrency || 0,
+      memoryGB: navigator.deviceMemory || 0,
+      touchPoints: navigator.maxTouchPoints || 0,
+      coarsePointer: !!(window.matchMedia && matchMedia('(pointer:coarse)').matches),
+      isMobileUA: /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent),
+      language: navigator.language || '',
+      timezoneOffsetMin: new Date().getTimezoneOffset(),
+      webgl: webglInfo(),
+    };
+    return d;
+  }
+
+  /** 顶层页 rAF 估算刷新率（契约 §4.1 口径：中位间隔 → 归一到标准档） */
+  function estimateRefresh(cb) {
+    var ts = [], last = 0, n = 0;
+    function step(t) {
+      if (last) ts.push(t - last);
+      last = t;
+      if (++n < 121) requestAnimationFrame(step); else cb(medianHz(ts));
+    }
+    try { requestAnimationFrame(step); } catch (e) { cb(null); }
+  }
+  function medianHz(ts) {
+    var m = quantile(ts, 0.5);
+    if (!m || m <= 0) return null;
+    return 1000 / m;
+  }
+  function snapHz(hz) {
+    var STD = [30, 50, 60, 75, 90, 120, 144, 165, 240];
+    if (!hz || !isFinite(hz) || hz <= 0) return 60;
+    var best = STD[0], bd = Infinity;
+    STD.forEach(function (s) { var d = Math.abs(s - hz); if (d < bd) { bd = d; best = s; } });
+    return best;
+  }
+
+  /* ------------------------------------------------------------ 就绪与采样 */
+  var readySince = Date.now();
+  function checkReady() {
+    var w = frameWin();
+    if (!w) return;
+    if (w.TWIN_3D_READY === true) {
+      if (!S.ready) onReady();
+      return;
+    }
+    if (w.TWIN_3D_READY === false && w.TWIN_3D_ERROR) {
+      fail('被测页面 3D 不可用：' + w.TWIN_3D_ERROR);
+      return;
+    }
+    var p = framePath();
+    $('loginNote').hidden = p !== '/login';
+    if (Date.now() - readySince > READY_TIMEOUT_MS) {
+      fail('等待 TWIN_3D_READY 超时（' + Math.round(READY_TIMEOUT_MS / 1000) + 's，当前 iframe 路径 ' +
+        (p || '未知') + '）。请确认已登录且 3D 画面正常显示。');
+    }
+  }
+  var readyTimer = setInterval(checkReady, 250);
+  frame.addEventListener('load', function () {
+    readySince = Date.now();
+    setStatus('测量框已加载，等待 3D 场景就绪…');
+  });
+
+  function onReady() {
+    S.ready = true;
+    clearInterval(readyTimer);
+    $('loginNote').hidden = true;
+    var perf = framePerf();
+    var d = (perf && perf.device) || {};
+    setStatus('场景已就绪（' + (d.mobile ? '移动端判定' : '桌面端判定') + '）。点击「开始测量」跑固定协议。', 'ok');
+    $('btnRun').disabled = false;
+    if (S.refreshHz === null) {
+      estimateRefresh(function (hz) {
+        S.refreshHz = hz === null ? null : snapHz(hz);
+        if (AUTO && !S.running && !S.done) startRun();
+      });
+    } else if (AUTO && !S.running && !S.done) {
+      startRun();
+    }
+  }
+
+  function fail(msg) {
+    if (S.failed) return;
+    S.failed = msg;
+    clearInterval(readyTimer);
+    setStatus(msg, 'err');
+    S.notes.push(msg);
+  }
+
+  function sample() {
+    var p = framePerf();
+    if (!p) return null;
+    var s = {
+      t: Math.round(performance.now() - S.t0),
+      phase: S.currentKey,
+      fps: num(p.fps),
+      frameMs: num(p.frameMs),
+      frameMsP95: num(p.frameMsP95),
+      drawCalls: num(p.drawCalls),
+      triangles: num(p.triangles),
+      renders: num(p.renders),
+      tier: p.tier, tierLabel: p.tierLabel, auto: p.auto === true,
+      targetFps: num(p.targetFps), refreshHz: num(p.refreshHz),
+      dpr: num(p.dpr), pixelRatio: num(p.pixelRatio),
+      antialias: p.antialias === true,
+      canvas: (p.canvas && p.canvas.length === 2) ? [Math.round(p.canvas[0]), Math.round(p.canvas[1])] : null,
+      msaaSamples: num(p.msaaSamples),
+      theme: p.theme, running: p.running === true, idle: p.idle === true,
+      interacting: p.interacting === true, insufficient: p.insufficient === true,
+      reason: p.reason || '',
+    };
+    S.samples.push(s);
+    return s;
+  }
+
+  /* -------------------------------------------------------------- 协议执行 */
+  var sampleTimer = null;
+  function startRun() {
+    if (S.running) return;
+    if (!S.ready) { setStatus('3D 场景还没就绪，无法开始。', 'err'); return; }
+    S.running = true; S.done = false; S.failed = null;
+    S.samples = []; S.phases = []; S.notes = []; S.stepIndex = -1;
+    S.t0 = performance.now();
+    window.__PERF_RESULT = null;
+    window.__PERF_JSON = '';
+    $('btnRun').disabled = true;
+    $('btnDownload').disabled = true;
+    $('btnCopy').disabled = true;
+    $('verdictCard').hidden = true;
+    $('deviceCard').hidden = true;
+    $('phaseCard').hidden = true;
+    $('raw').value = '';
+    S.device = collectDevice();
+    S.currentKey = 'pre';
+    sampleTimer = setInterval(sample, SAMPLE_MS);
+
+    setStatus('预热 ' + Math.round(WARMUP_MS / 1000) + 's（让着色器编译/首帧抖动过去，不计入判定）…', null, 0);
+    setTimeout(nextStep, WARMUP_MS);
+  }
+
+  function nextStep() {
+    S.stepIndex++;
+    if (S.stepIndex >= STEPS.length) { finish(); return; }
+    var st = STEPS[S.stepIndex];
+    var api = frameApi();
+    if (st.act) {
+      try { st.act(api); } catch (e) {
+        S.notes.push('阶段「' + st.label + '」动作失败：' + ((e && e.message) || e));
+      }
+    }
+    S.currentKey = st.key;
+    var startChk = sample();                       // 阶段起点检查点
+    var startRenders = startChk ? startChk.renders : null;
+    var tStart = performance.now();
+    setStatus('测量中 ' + (S.stepIndex + 1) + '/' + STEPS.length + '：' + st.label +
+      '（剩余约 ' + Math.max(0, Math.round((STEPS.length - S.stepIndex) * 2)) + 's）',
+      null, (S.stepIndex + 1) / (STEPS.length + 1));
+    progressWatch(st, tStart);
+    setTimeout(function () {
+      var endChk = sample();
+      endStep(st, startRenders, tStart, endChk);
+      nextStep();
+    }, st.ms);
+  }
+
+  function progressWatch(st, tStart) {
+    // 阶段内只更新进度条文字（不重建表格），避免测量期间自己给机器加载
+    var tick = setInterval(function () {
+      if (S.currentKey !== st.key) { clearInterval(tick); return; }
+      var done = Math.min(1, (performance.now() - tStart) / st.ms);
+      setStatus('测量中：' + st.label + '（' + Math.round(done * 100) + '%）', null,
+        (S.stepIndex + 1 - done * 0.5) / (STEPS.length + 1));
+      if (done >= 1) clearInterval(tick);
+    }, 100);
+  }
+
+  function endStep(st, startRenders, tStart, endChk) {
+    var durMs = performance.now() - tStart;
+    var ss = S.samples.filter(function (s) { return s.phase === st.key; });
+    var rendersEnd = endChk ? endChk.renders : null;
+    var fpsMeasured = null;
+    if (startRenders !== null && rendersEnd !== null && durMs > 0) {
+      fpsMeasured = (rendersEnd - startRenders) / (durMs / 1000);   // 真渲染帧数 ÷ 真实时长
+    }
+    var fpsSampled = mean(ss.map(function (s) { return s.fps; }));
+    var last = ss.length ? ss[ss.length - 1] : endChk;
+    S.phases.push({
+      key: st.key,
+      label: st.label,
+      kind: st.kind,
+      note: st.note || '',
+      plannedMs: st.ms,
+      durationMs: Math.round(durMs),
+      samples: ss.length,
+      fps: fpsMeasured === null ? null : Math.round(fpsMeasured * 10) / 10,
+      fpsSampledMean: fpsSampled === null ? null : Math.round(fpsSampled * 10) / 10,
+      frameMsP50: quantile(ss.map(function (s) { return s.frameMs; }), 0.5),
+      frameMsP95: quantile(ss.map(function (s) { return s.frameMs; }), 0.95),
+      frameMsP95Worst: quantile(ss.map(function (s) { return s.frameMsP95; }), 1.0),
+      drawCalls: last ? last.drawCalls : null,
+      triangles: last ? last.triangles : null,
+      rendersFrom: startRenders,
+      rendersTo: rendersEnd,
+      tier: last ? last.tier : null,
+      tierLabel: last ? last.tierLabel : null,
+      auto: last ? last.auto : null,
+      targetFps: last ? last.targetFps : null,
+      pixelRatio: last ? last.pixelRatio : null,
+      canvas: last ? last.canvas : null,
+      msaaSamples: last ? last.msaaSamples : null,
+      antialias: last ? last.antialias : null,
+      theme: last ? last.theme : null,
+      idleSeen: ss.some(function (s) { return s.idle; }),
+    });
+  }
+
+  function tierTrace() {
+    var out = [];
+    S.samples.forEach(function (s) {
+      if (!s.tier && s.auto !== true) return;
+      var lastT = out.length ? out[out.length - 1] : null;
+      if (!lastT || lastT.tier !== s.tier || lastT.auto !== s.auto) {
+        out.push({ t: s.t, tier: s.tier, tierLabel: s.tierLabel, auto: s.auto, targetFps: s.targetFps });
+      }
+    });
+    return out;
+  }
+
+  function deviceKind(perf) {
+    var d = perf && perf.device;
+    if (d && typeof d.mobile === 'boolean') return d.mobile ? 'mobile' : 'desktop';
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+  }
+
+  function buildResult(reason) {
+    var perf = framePerf() || {};
+    var kind = deviceKind(perf);
+    var threshold = kind === 'mobile' ? 30 : 40;
+    var interact = S.phases.filter(function (p) { return p.kind === 'interact' && num(p.fps) !== null; });
+    var idle = S.phases.filter(function (p) { return p.kind === 'idle' && num(p.fps) !== null; });
+    var durSum = interact.reduce(function (a, p) { return a + p.durationMs; }, 0);
+    var fpsActive = durSum > 0
+      ? interact.reduce(function (a, p) { return a + p.fps * p.durationMs; }, 0) / durSum : null;
+    var durIdle = idle.reduce(function (a, p) { return a + p.durationMs; }, 0);
+    var fpsIdle = durIdle > 0
+      ? idle.reduce(function (a, p) { return a + p.fps * p.durationMs; }, 0) / durIdle : null;
+    var pass = num(fpsActive) !== null && fpsActive >= threshold;
+    var canvas = (S.phases.length && S.phases[S.phases.length - 1].canvas) || null;
+    var notes = S.notes.slice();
+    if (S.device && S.device.webgl && S.device.webgl.softwareLikely) {
+      notes.push('检测到软件渲染（' + S.device.webgl.renderer + '）：此结果不代表真机 GPU 性能，仅用于功能验证。');
+    }
+    if (!pass) {
+      // 不达标要说清楚"是设备不够还是设置太高"，现场才解释得通（如实，不掩盖）
+      notes.push('不达标时优先检查：① 是否在 iframe 小窗口里测的（点「放大测量框」重跑）；' +
+        '② 目标帧率 ' + (num(perf.targetFps) === null ? '--' : Math.round(perf.targetFps)) +
+        'fps 是否超出屏幕刷新率 ' +
+        (num(perf.refreshHz) === null ? (S.refreshHz === null ? '--' : S.refreshHz) : num(perf.refreshHz)) + 'Hz；' +
+        '③ 画质档是否为「自动」（自动会按实测帧耗时逐档下调）。');
+    }
+    notes.push('本页用同源 iframe 承载 /dashboard，测得的帧率对应测量框尺寸；' +
+      '手机端想测全屏请先点「放大测量框」再跑，或直接在 /dashboard 观察右下角性能角标。');
+    var r = {
+      schema: 'bridge-guardian-perf/1',
+      generatedAt: new Date().toISOString(),
+      reason: reason || (S.failed ? 'failed: ' + S.failed : 'completed'),
+      page: {
+        href: location.href,
+        iframeSrc: '/dashboard',
+        protocol: '预热2s → 静止3s → 预设飞行(全桥/主跨/桥塔/峡谷 各1.2s) → 自动旋转3s → 复位 → 静止3s',
+        warmupMs: WARMUP_MS,
+        sampleIntervalMs: SAMPLE_MS,
+      },
+      measure: {
+        fps: 'perf.renders 增量 ÷ 阶段真实时长（真渲染帧数口径）',
+        frameMsP50: '各次 250ms 采样 perf.frameMs（场景侧 60 帧滑动窗口中位帧耗时）的中位数',
+        frameMsP95: '各次采样 perf.frameMs 的 95 分位（保守：窗口内已含尖峰）',
+        frameMsP95Worst: '各次采样 perf.frameMsP95 的最大值（最坏窗口，悲观口径）',
+      },
+      device: S.device,
+      refresh: {
+        topEstimateRawHz: S.refreshHz,                    // 顶层页 rAF 估算并归一到标准档
+        iframeReportedHz: num(perf.refreshHz),            // 场景侧 api.getRefreshHz() 的口径
+      },
+      frame: {
+        iframeSize: [frame.clientWidth, frame.clientHeight],
+        canvas: canvas,
+        pixelRatio: num(perf.pixelRatio),
+        dpr: num(perf.dpr),
+        antialias: perf.antialias === true,
+        msaaSamples: num(perf.msaaSamples),
+        targetFps: num(perf.targetFps),
+        tier: perf.tier, tierLabel: perf.tierLabel, auto: perf.auto === true,
+        theme: perf.theme,
+        drawCalls: num(perf.drawCalls),
+        triangles: num(perf.triangles),
+        deviceInside: perf.device || null,
+      },
+      verdict: {
+        kind: kind,
+        threshold: threshold,
+        fpsActive: num(fpsActive) === null ? null : Math.round(fpsActive * 10) / 10,
+        fpsIdle: num(fpsIdle) === null ? null : Math.round(fpsIdle * 10) / 10,
+        pass: !!pass,
+        text: num(fpsActive) === null
+          ? '数据不足，无法判定'
+          : (pass ? '达标' : '不达标'),
+        detail: num(fpsActive) === null ? '' :
+          (kind === 'mobile' ? '移动端阈值 ≥' : '桌面端阈值 ≥') + threshold + 'fps，实测交互态 ' +
+          (Math.round(fpsActive * 10) / 10) + 'fps → ' + (pass ? '达标' : '不达标'),
+      },
+      phases: S.phases,
+      tierTrace: tierTrace(),
+      notes: notes,
+      sampleCount: S.samples.length,
+      samples: S.samples,
+    };
+    return r;
+  }
+
+  function finish() {
+    if (sampleTimer) { clearInterval(sampleTimer); sampleTimer = null; }
+    S.running = false;
+    S.done = true;
+    var r = buildResult();
+    S.result = r;
+    window.__PERF_RESULT = r;
+    window.__PERF_JSON = JSON.stringify(r, null, 2);
+    $('raw').value = window.__PERF_JSON;
+    renderResult(r);
+    $('btnRun').disabled = false;
+    $('btnRun').textContent = '重跑测量';
+    $('btnDownload').disabled = false;
+    $('btnCopy').disabled = false;
+    setStatus('测量完成：' + r.verdict.detail, r.verdict.pass ? 'ok' : 'err');
+  }
+
+  /* ------------------------------------------------------------ 结果渲染 */
+  function renderResult(r) {
+    var v = r.verdict;
+    $('verdict').innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">' +
+        '<span class="pill ' + (v.pass ? 'ok' : 'bad') + '">' + esc(v.text) + '</span>' +
+        '<b>' + esc(v.detail || '（数据不足）') + '</b>' +
+      '</div>' +
+      '<div class="kv" style="margin-top:10px">' +
+        row('设备类别', v.kind === 'mobile' ? '移动端（阈值 ≥' + v.threshold + 'fps）' : '桌面端（阈值 ≥' + v.threshold + 'fps）') +
+        row('交互态帧率', v.fpsActive === null ? '--' : v.fpsActive + ' fps（飞行 + 自动旋转，设备真实能力）') +
+        row('空载态帧率', v.fpsIdle === null ? '--' : v.fpsIdle + ' fps（静止：场景按 idleFps 上限渲染，低是设计行为）') +
+        row('目标帧率', r.frame.targetFps === null ? '--' : r.frame.targetFps + ' fps') +
+        row('屏幕刷新率', '顶层 rAF 估算 ' +
+          (r.refresh.topEstimateRawHz === null ? '--' : r.refresh.topEstimateRawHz + ' Hz') +
+          ' · 场景侧上报 ' + (r.refresh.iframeReportedHz === null ? '--' : r.refresh.iframeReportedHz + ' Hz')) +
+        row('画质档位', (r.frame.tierLabel || '--') + '（' + (r.frame.auto ? '自动' : '手动') + '）· 主题 ' + esc(r.frame.theme || '--')) +
+        row('画布 / 像素比', (r.frame.canvas ? r.frame.canvas[0] + '×' + r.frame.canvas[1] : '--') +
+          ' · 像素比 ' + fixed(r.frame.pixelRatio, 2) + '（屏幕 DPR ' + fixed(r.frame.dpr, 2) + '）') +
+        row('MSAA / 抗锯齿', (r.frame.msaaSamples === null ? '--' : (r.frame.msaaSamples > 0 ? r.frame.msaaSamples + '×' : '关闭')) +
+          ' · antialias ' + (r.frame.antialias ? '开' : '关')) +
+        row('draw calls / 三角形', grp(r.frame.drawCalls) + ' / ' + grp(r.frame.triangles)) +
+        row('WebGL 渲染器', esc((r.device && r.device.webgl && r.device.webgl.renderer) || '未知')) +
+        row('UA', esc(r.device ? r.device.ua : '')) +
+        row('屏幕 / 视口', (r.device ? r.device.screen.join('×') : '--') + ' / ' +
+          (r.device ? r.device.viewport.join('×') : '--') + ' · DPR ' + fixed(r.device ? r.device.dpr : null, 2)) +
+        row('CPU 核数 / 内存', (r.device ? (r.device.cores || '--') : '--') + ' 核 · ' +
+          (r.device && r.device.memoryGB ? r.device.memoryGB + ' GB' : '--')) +
+        row('测量框尺寸', (r.frame.iframeSize || []).join('×') + '（iframe 内 /dashboard 的实际视口）') +
+      '</div>' +
+      (r.notes && r.notes.length
+        ? '<ul class="tips">' + r.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul>'
+        : '');
+    $('verdictCard').hidden = false;
+
+    var d = r.device || {};
+    $('device').innerHTML = '<div class="kv">' +
+      row('UA', esc(d.ua)) +
+      row('平台 / 语言', esc((d.platform || '--') + ' / ' + (d.language || '--'))) +
+      row('屏幕（CSS px）', (d.screen || []).join('×') + '（可用 ' + (d.availScreen || []).join('×') + '）') +
+      row('视口 / DPR', (d.viewport || []).join('×') + ' / ' + fixed(d.dpr, 2)) +
+      row('CPU 核数 / 设备内存', (d.cores || '--') + ' / ' + (d.memoryGB ? d.memoryGB + ' GB' : '未暴露')) +
+      row('触摸点 / 粗指针', (d.touchPoints || 0) + ' / ' + (d.coarsePointer ? '是' : '否')) +
+      row('移动端 UA 判定', d.isMobileUA ? '是' : '否') +
+      row('WebGL 版本 / 供应商', esc(((d.webgl || {}).version || '--') + ' / ' + ((d.webgl || {}).vendor || '--'))) +
+      row('WebGL 渲染器（UNMASKED）', esc(((d.webgl || {}).renderer) || '--') +
+        ((d.webgl || {}).softwareLikely ? ' <span class="pill warn">软件渲染</span>' : '')) +
+      row('WebGL 最大纹理 / MSAA', grp((d.webgl || {}).maxTextureSize) + ' / ' +
+        (((d.webgl || {}).msaaSamples || 0) + '×')) +
+      '</div>';
+    $('deviceCard').hidden = false;
+
+    var head = '<table><thead><tr><th>阶段</th><th>类型</th><th class="num">时长</th>' +
+      '<th class="num">帧率(fps)</th><th class="num">p50 ms</th><th class="num">p95 ms</th>' +
+      '<th class="num">draw calls</th><th class="num">三角形</th><th>档位</th><th>画布</th></tr></thead><tbody>';
+    var body = r.phases.map(function (p) {
+      var kindTxt = p.kind === 'interact' ? '<span class="pill ok">交互</span>'
+        : (p.kind === 'idle' ? '<span class="pill mute">空载</span>' : '<span class="pill mute">准备</span>');
+      return '<tr><td>' + esc(p.label) + (p.note ? '<div class="note" style="margin:0">' + esc(p.note) + '</div>' : '') + '</td>' +
+        '<td>' + kindTxt + '</td>' +
+        '<td class="num">' + (p.durationMs / 1000).toFixed(2) + 's</td>' +
+        '<td class="num"><b>' + fixed(p.fps, 1) + '</b></td>' +
+        '<td class="num">' + fixed(p.frameMsP50, 1) + '</td>' +
+        '<td class="num">' + fixed(p.frameMsP95, 1) + '</td>' +
+        '<td class="num">' + grp(p.drawCalls) + '</td>' +
+        '<td class="num">' + grp(p.triangles) + '</td>' +
+        '<td>' + esc((p.tierLabel || p.tier || '--') + (p.auto === false ? '(手动)' : p.auto ? '(自动)' : '')) + '</td>' +
+        '<td>' + (p.canvas ? p.canvas[0] + '×' + p.canvas[1] : '--') + '</td></tr>';
+    }).join('');
+    $('phases').innerHTML = head + body + '</tbody></table>' +
+      '<div class="note">画质档轨迹：' + (r.tierTrace.length
+        ? r.tierTrace.map(function (t) { return (t.t / 1000).toFixed(1) + 's ' + esc(t.tierLabel || t.tier || '--') +
+            (t.auto ? '(自动)' : '(手动)'); }).join(' → ')
+        : '无变化（全程 ' + esc((r.frame.tierLabel || r.frame.tier || '--')) + '）') + '</div>';
+    $('phaseNote').textContent = '帧率口径：' + r.measure.fps + '；p50：' + r.measure.frameMsP50 +
+      '；p95：' + r.measure.frameMsP95 + '。共采样 ' + r.sampleCount + ' 次（每 ' + r.page.sampleIntervalMs + 'ms）。';
+    $('phaseCard').hidden = false;
+    $('rawCard').open = false;
+  }
+
+  function row(k, v) {
+    return '<span class="k">' + esc(k) + '</span><span class="v">' + v + '</span>';
+  }
+
+  /* ------------------------------------------------------------ 导出/复制 */
+  function download() {
+    var text = window.__PERF_JSON;
+    if (!text) { setStatus('还没有结果可以导出，请先跑一次测量。', 'err'); return; }
+    try {
+      var blob = new Blob([text], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'bridge-guardian-perf-' + stamp() + '.json';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+      setStatus('已导出 JSON 文件：bridge-guardian-perf-' + stamp() + '.json', 'ok');
+    } catch (e) {
+      setStatus('浏览器不支持自动下载（' + ((e && e.message) || e) + '）：请展开「原始 JSON」手动全选复制。', 'err');
+      $('rawCard').open = true;
+    }
+  }
+
+  function copyJson() {
+    var text = window.__PERF_JSON;
+    if (!text) { setStatus('还没有结果可以复制，请先跑一次测量。', 'err'); return; }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        setStatus('已复制完整 JSON 到剪贴板。', 'ok');
+      }, function () { fallbackCopy(text); });
+    } else {
+      fallbackCopy(text);
+    }
+  }
+
+  function fallbackCopy(text) {
+    // 非安全上下文（http://局域网 IP）下 Clipboard API 不可用；execCommand 是最后的兜底。
+    // 注意：隐藏的 <details> 里的 textarea 选不中，必须先展开再 select。
+    $('rawCard').open = true;
+    var ta = $('raw');
+    ta.value = text;
+    ta.readOnly = false;
+    ta.focus();
+    ta.select();
+    try { ta.setSelectionRange(0, text.length); } catch (e) { /* 忽略 */ }
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+    ta.readOnly = true;
+    if (ok) setStatus('已复制完整 JSON 到剪贴板。', 'ok');
+    else setStatus('剪贴板不可用：已展开「原始 JSON」，请长按/右键手动复制全文。', 'err');
+  }
+
+  function keepFrameSize() {
+    $('frameSize').textContent = frame.clientWidth + '×' + frame.clientHeight;
+  }
+  window.addEventListener('resize', keepFrameSize);
+  keepFrameSize();
+
+  /* ------------------------------------------------------------- 按钮绑定 */
+  $('btnRun').addEventListener('click', startRun);
+  $('btnDownload').addEventListener('click', download);
+  $('btnCopy').addEventListener('click', copyJson);
+  $('btnBig').addEventListener('click', function () {
+    var big = document.body.classList.toggle('big');
+    $('btnBig').textContent = big ? '还原测量框' : '放大测量框';
+    keepFrameSize();
+    // 尺寸变化后场景会自行 resize；提示用户此时的数字对应新的画布尺寸
+    setStatus(big ? '测量框已放大到整屏——重新跑一次测量，数字才对应这个大画布。'
+      : '测量框已还原。', 'ok');
+  });
+
+  /* 诊断句柄：自动化验证用（?auto=1 → 跑完写 window.__PERF_RESULT） */
+  window.__PERF_PAGE = {
+    state: S,
+    start: startRun,
+    steps: STEPS,
+    fail: fail,
+    version: 1,
+  };
+  setStatus('正在准备：等待测量框内的 3D 场景就绪…（' + (AUTO ? '自动模式：就绪后自动开跑' : '就绪后点「开始测量」') + '）');
+  checkReady();
+})();
+</script>
+</body>
+</html>

@@ -4,6 +4,8 @@
 内容来自真实运行输出（见同目录 *_raw.txt），非伪造。
 """
 import os
+import re
+
 from PIL import Image, ImageDraw, ImageFont
 
 EVIDENCE_DIR = os.path.join(os.path.dirname(__file__), "..", "docs", "evidence")
@@ -57,18 +59,38 @@ def _render(title, lines, out_path, accent_color=(46, 204, 113)):
     print(f"已生成: {out_path} ({width}x{height})")
 
 
+def _count_passed(lines):
+    """从 pytest 原始输出里取「N passed」；取不到返回 None。
+
+    数字一律从真实输出里解析，禁止在脚本里写死测试数量（写死会随套件增长而失真）。
+    """
+    for line in reversed(lines):
+        m = re.search(r"(\d+)\s+passed", line)
+        if m:
+            return int(m.group(1))
+    return None
+
+
 def main():
     # 读取真实测试输出
     raw = []
     raw_path = os.path.join(EVIDENCE_DIR, "pytest_output_raw.txt")
     if os.path.exists(raw_path):
-        with open(raw_path, encoding="utf-8") as f:
+        # utf-8-sig：兼容 PowerShell 的 Out-File -Encoding utf8 写出的 BOM
+        with open(raw_path, encoding="utf-8-sig") as f:
             raw = f.read().splitlines()
     else:
         raw = ["(raw output missing)"]
 
-    _render("桥体卫士 · pytest 测试全绿 (37 passed)", raw,
-            os.path.join(EVIDENCE_DIR, "测试全绿_37passed.png"))
+    passed = _count_passed(raw)
+    if passed is None:
+        title = "桥体卫士 · pytest 测试输出（未识别到 passed 计数，请检查原始输出）"
+        out_name = "测试全绿_计数未识别.png"
+    else:
+        title = "桥体卫士 · pytest 测试全绿 (%d passed)" % passed
+        out_name = "测试全绿_%dpassed.png" % passed
+    print("原始输出解析：passed=%s → 输出文件 %s" % (passed, out_name))
+    _render(title, raw, os.path.join(EVIDENCE_DIR, out_name))
 
     fi_lines = [
         "桥体卫士 · 故障注入脚本 scripts/fault_injection.py",

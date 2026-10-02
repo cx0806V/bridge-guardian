@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 500" fill="none">
-  <g stroke="#3fd0ff" stroke-width="1.4" opacity="0.35">
+  <g stroke="#e0b97b" stroke-width="1.4" opacity="0.35">
     <!-- 桥面 -->
     <path d="M60 300 H1380" />
     <path d="M60 316 H1380" stroke-opacity="0.5" />
@@ -18,7 +18,7 @@
     <path d="M920 104 L920 300" stroke-opacity="0.55" />
     <path d="M1000 128 L1000 300" stroke-opacity="0.55" />
   </g>
-  <g stroke="#3fd0ff" stroke-width="1" opacity="0.18">
+  <g stroke="#e0b97b" stroke-width="1" opacity="0.18">
     <!-- 水面波纹 -->
     <path d="M40 360 Q 120 348, 200 360 T 360 360 T 520 360 T 680 360 T 840 360 T 1000 360 T 1160 360 T 1320 360 T 1420 360" />
     <path d="M40 392 Q 120 380, 200 392 T 360 392 T 520 392 T 680 392 T 840 392 T 1000 392 T 1160 392 T 1320 392 T 1420 392" stroke-opacity="0.6" />

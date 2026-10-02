@@ -1,0 +1,587 @@
+{%- import "_shell.html" as shell -%}
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>实时趋势 - 桥体卫士</title>
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ffffff'/%3E%3Cpath d='M5 23h22M5 23c3-6 7.5-9 11-9s8 3 11 9M16 14V7M9 7h14' fill='none' stroke='%2316a34a' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+  {# 共享骨架样式（侧栏/顶栏/抽屉），全站只有 _shell.html 一份定义 #}
+  {{ shell.shell_head() }}
+  <style>
+  /* 本页局部样式：只写「布局 / 尺寸 / 触摸目标」，配色一律交给 static/app.css 第 20 节与 _shell.html，
+     避免与 p1-css 抢样式。类名统一 pg- 前缀，不写任何 .sh-* 选择器，不会污染 shell 与其它页面。 */
+  .pg-stack { display: flex; flex-direction: column; gap: 16px; }
+  .pg-stats { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+  .pg-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .pg-stat-t { font-size: 12.5px; color: #6b7280; display: flex; align-items: center; gap: 6px; }
+  .pg-stat-v { font-size: 26px; font-weight: 700; line-height: 1.2; color: #1f2937; font-variant-numeric: tabular-nums; }
+  .pg-stat-s { font-size: 12px; color: #6b7280; min-height: 16px; }
+  .pg-2col { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); align-items: start; }
+  .pg-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .pg-head h3 { margin: 0; }
+  .pg-sub { font-size: 12px; color: #6b7280; font-weight: 400; }
+  .pg-glyph { width: 16px; height: 16px; flex: 0 0 auto; color: #16a34a; }
+  .pg-chart { width: 100%; height: 300px; }
+  .pg-gauge { width: 100%; height: 258px; }
+  .pg-mini { width: 100%; height: 196px; }
+  /* 图表高度：app.css 给 #chart / #gauge / #miniChart 定的是大屏底栏尺寸（152px / 154px / 90px），
+     本页要的是趋势页尺寸，必须用【同 ID 选择器】覆盖（ID 特异性高于类，本页样式块又在 app.css 之后）。
+     ⚠️ 不要改成 .pg-* 类选择器：实测会被 app.css 的 ID 规则压掉（300px 变回 152px）。 */
+  #chart { width: 100%; height: 300px; }
+  #gauge { width: 100%; height: 258px; }
+  #miniChart { width: 100%; height: 196px; }
+  .pg-gaugefoot { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: #6b7280; margin-top: 6px; }
+  .pg-gaugefoot b { color: #1f2937; font-variant-numeric: tabular-nums; }
+  .pg-kv { display: flex; justify-content: space-between; gap: 12px; font-size: 13px;
+    padding: 9px 0; border-bottom: 1px dashed #e5e8eb; }
+  .pg-kv:last-child { border-bottom: 0; }
+  .pg-kv .k { color: #6b7280; }
+  .pg-kv .v { color: #1f2937; font-variant-numeric: tabular-nums; }
+  .pg-foot { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: #6b7280;
+    padding: 2px 2px 0; }
+  .pg-alert { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 1.5;
+    padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(190, 18, 60, .35);
+    background: rgba(190, 18, 60, .06); color: #be123c; }
+  .pg-alert[hidden] { display: none; }
+  .pg-empty { margin: 0; padding: 24px 8px; text-align: center; font-size: 13px; color: #6b7280; }
+  .pg-foot a { display: inline-flex; align-items: center; }
+  @media (max-width: 768px) {
+    /* 手机端：图表降到 220px 级（同样必须用 ID 选择器，理由见上） */
+    #chart { height: 220px; }
+    #gauge { height: 210px; }
+    #miniChart { height: 180px; }
+    .pg-stat-v { font-size: 23px; }
+    /* 触摸目标 ≥44×44px（本页可点元素只有页脚链接与 ECharts 自带控件） */
+    .pg-foot a { min-height: 44px; }
+  }
+  </style>
+</head>
+<body class="sh-body">
+
+{# ------------------------------------------------------------------
+   实时趋势页（搬家来源 templates/dashboard.html 的图表区）
+   搬家 id 一个未改名： #chart #trendSpan #chartConn #gauge #gaugeValue
+                     #gaugeThreshold #miniChart #miniSpan #miniCount
+   红线：数值只来自 /api/data；设备离线一律显示 -- 并给出原因；
+        配色改浅色（白底可读）；不引入任何外部资源。
+   ------------------------------------------------------------------ #}
+
+<div class="sh-layout">
+{{ shell.shell_sidebar('trend') }}
+
+<div class="sh-main">
+  {{ shell.shell_topbar('实时趋势', '桥梁受载趋势 · 阈值仪表盘 · 近段采样', 'trend') }}
+
+  <main class="sh-content">
+    <div class="sh-page pg-stack">
+
+      <!-- ============ 设备离线提示（默认隐藏；离线时如实给出原因，不伪造在线） ============ -->
+      <div class="pg-alert" id="trendOffline" hidden role="status">
+        <svg class="pg-glyph" style="color:currentColor" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 4.6l8.4 14.8H3.6z"/><path d="M12 9.6v4.2"/><path d="M12 16.6h.01"/>
+        </svg>
+        <span id="trendOfflineText">设备离线，读数为 --（原因加载中…）</span>
+      </div>
+
+      <!-- ============ 顶部指标卡（全部来自 /api/data，每秒刷新） ============ -->
+      <div class="pg-stats">
+        <div class="card stat-card pg-stat">
+          <div class="pg-stat-t">
+            <svg class="pg-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 20h18"/><path d="M4 15.5l4.6-4.9 3.4 3.2L20 5.6"/><path d="M15.6 5.6H20v4.3"/>
+            </svg>
+            当前指标
+          </div>
+          <div class="pg-stat-v num" id="statStrain">--</div>
+          <div class="pg-stat-s" id="statStrainNote">等待数据…</div>
+        </div>
+
+        <div class="card stat-card pg-stat">
+          <div class="pg-stat-t">
+            <svg class="pg-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 15h16"/><path d="M12 4v11"/><path d="M8.6 7.4L12 4l3.4 3.4"/>
+            </svg>
+            报警阈值
+          </div>
+          <div class="pg-stat-v num" id="statThreshold">{{ threshold }}</div>
+          <div class="pg-stat-s">超过 1.0 / 1.1 / 1.2 倍依次预警、报警、严重报警</div>
+        </div>
+
+        <div class="card stat-card pg-stat">
+          <div class="pg-stat-t">
+            <svg class="pg-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.2"/><path d="M12 7.6V12l3 1.9"/>
+            </svg>
+            采集周期
+          </div>
+          <div class="pg-stat-v num" id="statInterval">-- 秒</div>
+          <div class="pg-stat-s">本页每秒轮询 <b>/api/data</b></div>
+        </div>
+
+        <div class="card stat-card pg-stat">
+          <div class="pg-stat-t">
+            <svg class="pg-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/>
+            </svg>
+            最后采样
+          </div>
+          <div class="pg-stat-v num" id="statLast">--</div>
+          <div class="pg-stat-s">累计采样 <span id="statSamples">0</span> 次</div>
+        </div>
+      </div>
+
+      <!-- ============ 桥梁受载趋势（搬家 id：#chart #trendSpan #chartConn） ============ -->
+      <section class="card">
+        <div class="pg-head">
+          <h3>桥梁受载趋势</h3>
+          <span class="pg-sub" id="trendSpan">最近采样</span>
+          <span class="conn idle" id="chartConn" style="margin-left:auto"></span>
+        </div>
+        <div id="chart" class="pg-chart"></div>
+      </section>
+
+      <!-- ============ 阈值仪表盘 + 近段采样迷你面积图 ============ -->
+      <div class="pg-2col">
+        <section class="card">
+          <div class="pg-head"><h3>阈值仪表盘</h3><span class="pg-sub">量程 = 阈值 × 5/3</span></div>
+          <div id="gauge" class="pg-gauge"></div>
+          <div class="pg-gaugefoot">
+            <span>当前指标 <b id="gaugeValue">--</b></span>
+            <span>报警阈值 <b id="gaugeThreshold">{{ threshold }}</b></span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="pg-head"><h3>近段采样</h3><span class="pg-sub" id="miniSpan">最近历史点</span></div>
+          <div id="miniChart" class="pg-mini"></div>
+          <div class="pg-kv" style="margin-top:8px">
+            <span class="k">累计采样</span><span class="v num" id="miniCount">0 次</span>
+          </div>
+        </section>
+      </div>
+
+      <!-- ============ 页脚口径（相对应变指标，无量纲，不声称工程级精度） ============ -->
+      <div class="pg-foot">
+        <span>单位口径：{{ unit }}（无量纲，非工程微应变）</span>
+        <span>· 缩尺模型受载变化模拟</span>
+        <span>· 数据来源 <b>/api/data</b></span>
+        <span>· 数据源 <b id="trendSource">--</b></span>
+        <span>· 最近刷新 <b id="trendFoot">--</b></span>
+      </div>
+
+    </div>
+  </main>
+</div>
+</div><!-- /.sh-layout -->
+
+<!-- 本地 ECharts（离线可用，不依赖 CDN）。放在 body 末尾可保证图表脚本执行时已就绪。 -->
+<script src="/static/echarts.min.js"></script>
+<script>
+/* ====================================================================
+   实时趋势页脚本 —— 从 templates/dashboard.html 内联脚本整体搬家
+   搬家内容：ECharts 三图初始化 / chartSig 签名节流 / resizeCharts()+resizeChartsSoon()
+             / window resize+load 监听 / setNum count-up（reduced-motion 直赋）
+             / riskOf 风险分级 / gaugeOption+gaugeRanges / refresh 每秒轮询
+   改动仅两处：① 配色改浅色（白底可读）② refresh 只更新本页存在的 id
+   红线：数值只来自 /api/data；设备离线显示 --；不改后端接口字段。
+   ==================================================================== */
+(function () {
+  'use strict';
+
+  var CSRF_TOKEN = {{ csrf_token|tojson }};
+  var UNIT = {{ unit|tojson }};
+  var INITIAL_THRESHOLD = {{ threshold }};
+
+  /* ---------------- 0. 基础工具（与 dashboard 同口径） ---------------- */
+  function $(id) { return document.getElementById(id); }
+  function esc(v) { return String(v).replace(/[&<>"']/g, function (c) {
+    return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]; }); }
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function reduceMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+  function setText(el, txt) { if (el) el.textContent = txt; }
+  /* 顶栏状态区由 _shell.html 的 shell_scripts() 提供，它在页面脚本【之后】执行，
+     所以必须调用时再取（不能在脚本开头缓存，否则永远拿到空实现）。 */
+  var BG_NOOP = { setShellSim: function () {}, setShellConn: function () {}, setShellBell: function () {} };
+  function bg() { return window.BGShell || BG_NOOP; }
+
+  /* 风险/报警等级色阶：key 与后端规则口径一致（normal/warn/alarm/crit/offline），
+     颜色为白底可读的浅色版本（色相不变，只调暗到对比度达标）。 */
+  var SEV = {
+    0: { key: 'normal',  color: '#15803d', label: '安全' },
+    1: { key: 'warn',    color: '#b45309', label: '预警' },
+    2: { key: 'alarm',   color: '#c2410c', label: '报警' },
+    3: { key: 'crit',    color: '#be123c', label: '严重报警' },
+    4: { key: 'offline', color: '#6b7280', label: '设备离线' }
+  };
+
+  /* 风险分级：安全 / 预警 / 报警 / 严重报警；设备离线单独一档（与 SEV 表 key 一致） */
+  function riskOf(strain, threshold, isOnline) {
+    if (!isOnline) return { sev: 4, key: 'offline', label: '设备离线', cls: 'risk-offline' };
+    if (strain <= threshold) return { sev: 0, key: 'normal', label: '安全', cls: 'risk-normal' };
+    if (strain <= threshold * 1.1) return { sev: 1, key: 'warn', label: '预警', cls: 'risk-warn' };
+    if (strain <= threshold * 1.2) return { sev: 2, key: 'alarm', label: '报警', cls: 'risk-alarm' };
+    return { sev: 3, key: 'crit', label: '严重报警', cls: 'risk-crit' };
+  }
+
+  /* 离线原因：只陈述后端给的事实（last_error / timeout_count），不臆测、不美化。
+     timeout_count 仅在 > 0 时附加，避免出现「连续超时 0 次」这种反直觉的描述。 */
+  function offlineReason(h) {
+    var why = (h && h.last_error) ? String(h.last_error) : '未收到心跳';
+    var tc = h ? Number(h.timeout_count) : NaN;
+    if (isFinite(tc) && tc > 0) why += '（连续超时 ' + tc + ' 次）';
+    return why;
+  }
+
+  /* ====================================================================
+     ① 数字 count-up：数字变化时滚动过渡（reduced-motion 下直接赋值）
+     上一次的值存于 JS 表，避免读取 DOM；同值不重复动画。
+     ==================================================================== */
+  var numPrev = Object.create(null);
+  var numAnims = Object.create(null);
+  function setNum(el, value, opt) {
+    if (!el) return;
+    opt = opt || {};
+    if (value === null || value === undefined || !isFinite(value)) { el.textContent = '--'; numPrev[el.id] = null; return; }
+    var dec = opt.dec || 0;
+    var fmt = opt.fmt || function (v) { return v.toFixed(dec) + (opt.suffix || ''); };
+    var key = el.id || 'anon';
+    var prev = numPrev[key];
+    numPrev[key] = value;
+    var target = fmt(value);
+    var raf = window.requestAnimationFrame;
+    if (reduceMotion() || !raf || prev === null || prev === undefined) { el.textContent = target; return; }
+    if (Math.abs(prev - value) < Math.pow(10, -dec) / 2) { el.textContent = target; return; }
+    if (numAnims[key]) { raf.call(window, numAnims[key]); numAnims[key] = null; }
+    var from = prev, span = value - prev, t0 = null, DUR = opt.dur || 620;
+    el.classList.add('flash');
+    window.setTimeout(function () { el.classList.remove('flash'); }, 780);
+    numAnims[key] = function step(ts) {
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / DUR);
+      var e = 1 - Math.pow(1 - p, 3);               // easeOutCubic
+      el.textContent = fmt(from + span * e);
+      if (p < 1) { numAnims[key] = step; raf.call(window, step); } else { numAnims[key] = null; }
+    };
+    raf.call(window, numAnims[key]);
+  }
+
+  /* ====================================================================
+     ② 图表：趋势折线 / 阈值仪表 / 近段采样迷你面积（三图，全部浅色）
+        环形图 #donut 归 /alarms，本页不 init，避免空容器报错。
+     ==================================================================== */
+  var AXIS_LINE = '#d5dae0';
+  var SPLIT_LINE = '#eef1f4';
+  var AXIS_LABEL = '#6b7280';
+  var TOOLTIP = {
+    backgroundColor: 'rgba(255,255,255,.98)', borderColor: '#e5e8eb', borderWidth: 1,
+    textStyle: { color: '#1f2937', fontSize: 12 },
+    axisPointer: { lineStyle: { color: '#16a34a' } }
+  };
+  function areaGradient(alpha) {
+    return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+      { offset: 0, color: 'rgba(22, 163, 74, ' + alpha + ')' },
+      { offset: 1, color: 'rgba(22, 163, 74, 0)' }
+    ]);
+  }
+
+  var HAS_ECHARTS = !!(window.echarts && window.echarts.init);
+  var lineChart = null, gaugeChart = null, miniChart = null, charts = [];
+  /* 各图表最近一次数据签名：内容未变就不重绘（每秒轮询下的必要节流） */
+  var chartSig = { line: '', gauge: '', mini: '' };
+
+  function noChart(host, msg) {
+    if (host) host.innerHTML = '<p class="pg-empty">' + esc(msg) + '</p>';
+  }
+  if (!HAS_ECHARTS) {
+    /* 诚实降级：图表库没加载就如实说明，绝不画假图 */
+    noChart($('chart'), '图表库 /static/echarts.min.js 未加载，趋势图暂不可用（数值仍每秒刷新）');
+    noChart($('gauge'), '图表库未加载，仪表盘暂不可用');
+    noChart($('miniChart'), '图表库未加载，迷你图暂不可用');
+    setText($('chartConn'), '图表库未加载');
+    var cc0 = $('chartConn'); if (cc0) cc0.className = 'conn error';
+  } else {
+    lineChart = echarts.init($('chart'));
+    gaugeChart = echarts.init($('gauge'));
+    miniChart = echarts.init($('miniChart'));
+    charts = [lineChart, gaugeChart, miniChart];
+  }
+
+  /* 图表尺寸要跟随布局变化（窄屏单列时容器宽度会变，ECharts 不会自动感知）。
+     必须用无参 resize()：让 ECharts 自己读容器的 clientWidth/clientHeight。 */
+  function resizeCharts() {
+    charts.forEach(function (c) { c.resize(); });
+  }
+  /* 首屏补一次尺寸同步：ECharts init 时容器高度可能还没定型（grid/flex 布局未完成），
+     这里在下一帧与 400ms 后各补一次无参 resize()，让图幅与最终容器尺寸对齐。 */
+  function resizeChartsSoon() {
+    resizeCharts();
+    if (window.requestAnimationFrame) window.requestAnimationFrame(function () { resizeCharts(); });
+    window.setTimeout(resizeCharts, 400);
+  }
+
+  if (HAS_ECHARTS) {
+    /* ---- 趋势折线：绿色渐变面积 + 阈值红色虚线 markLine ---- */
+    lineChart.setOption({
+      animationDuration: 600, animationDurationUpdate: 260, animationEasingUpdate: 'cubicOut',
+      /* right 给到 34：x 轴最后一个刻度标签是「20:27:18」这种 8 字符时间串，
+         居中对齐在网格右缘，right:20 会把末位裁掉；bottom 46 给标签 + dataZoom 滑块。 */
+      grid: { left: 52, right: 34, top: 22, bottom: 46 },
+      xAxis: {
+        type: 'category', data: [], boundaryGap: false,
+        axisLine: { lineStyle: { color: AXIS_LINE } }, axisTick: { show: false },
+        axisLabel: { color: AXIS_LABEL, fontSize: 11, formatter: function (v) { return String(v).slice(11); } }
+      },
+      yAxis: {
+        type: 'value', scale: true, name: UNIT,
+        nameTextStyle: { color: AXIS_LABEL, fontSize: 10, padding: [0, 0, 0, 24] },
+        axisLine: { show: false }, axisTick: { show: false },
+        splitLine: { lineStyle: { color: SPLIT_LINE } },
+        axisLabel: { color: AXIS_LABEL, fontSize: 11 }
+      },
+      tooltip: Object.assign({ trigger: 'axis' }, TOOLTIP, {
+        formatter: function (params) {
+          var p = params[0]; if (!p) return '';
+          return '<div style="font-weight:600;margin-bottom:4px">' + esc(p.axisValue) + '</div>' +
+                 '<span style="color:#16a34a">应变指标</span>：<b>' + Number(p.data).toFixed(2) + '</b> ' + UNIT;
+        }
+      }),
+      dataZoom: [
+        { type: 'inside' },
+        { type: 'slider', height: 12, bottom: 8, borderColor: '#e5e8eb',
+          backgroundColor: '#f8fafb', fillerColor: 'rgba(22, 163, 74, .12)',
+          handleStyle: { color: '#16a34a' },
+          textStyle: { color: AXIS_LABEL, fontSize: 10 },
+          dataBackground: { lineStyle: { color: 'rgba(22, 163, 74, .35)' }, areaStyle: { color: 'rgba(22, 163, 74, .12)' } },
+          /* ECharts 的 selectedDataBackground 默认是蓝灰（#8fb0f7），滑块选中段会漏出蓝色 */
+          selectedDataBackground: { lineStyle: { color: 'rgba(22, 163, 74, .65)' }, areaStyle: { color: 'rgba(22, 163, 74, .22)' } } }
+      ],
+      series: [{
+        name: '应变指标', type: 'line', data: [], smooth: true, showSymbol: false, sampling: 'lttb',
+        lineStyle: { color: '#16a34a', width: 2 },
+        itemStyle: { color: '#16a34a' },
+        areaStyle: { color: areaGradient(0.28) },
+        markLine: {
+          symbol: 'none', silent: true,
+          data: [{ yAxis: INITIAL_THRESHOLD, name: '阈值' }],
+          lineStyle: { color: '#be123c', type: 'dashed', width: 1.5 },
+          label: { color: '#be123c', formatter: '阈值 ' + INITIAL_THRESHOLD, position: 'insideEndTop', fontSize: 10 }
+        }
+      }]
+    });
+  }
+
+  /* ---- 阈值仪表盘：量程随阈值自适应（阈值 5/3 倍），四档刻度带用 SEV 浅色版 ---- */
+  function gaugeMaxOf(threshold) { return Math.max(Math.ceil(threshold * 5 / 3), 10); }
+  function gaugeRanges(threshold) {
+    var t = threshold / gaugeMaxOf(threshold);
+    return [
+      [Math.min(0.999, t), SEV[0].color],
+      [Math.min(0.999, t * 1.1), SEV[1].color],
+      [Math.min(0.999, t * 1.2), SEV[2].color],
+      [1, SEV[3].color]
+    ];
+  }
+  function gaugeOption(d) {
+    var h = d.device_health || {};
+    var isOnline = h.state !== 'offline';
+    var hasValue = isOnline && d.strain !== null && d.strain !== undefined;
+    var risk = riskOf(d.strain, d.threshold, isOnline);
+    var color = SEV[risk.sev].color;
+    var max = gaugeMaxOf(d.threshold);
+    return {
+      animationDuration: 600, animationDurationUpdate: 260, animationEasingUpdate: 'cubicOut',
+      series: [{
+        type: 'gauge', min: 0, max: max, radius: '76%', center: ['50%', '58%'],
+        startAngle: 205, endAngle: -25, splitNumber: 5,
+        axisLine: { lineStyle: { width: 14, color: gaugeRanges(d.threshold) } },
+        /* 指针去掉深色发光：shadowBlur 8 + shadowColor 'currentColor'
+           （canvas 不解析 currentColor，会落回默认的透明黑 → 即「无深色光晕」，正是白底想要的效果） */
+        pointer: { icon: 'path://M2,0 L-2,0 L-1,-54 L0,-62 L1,-54 Z', width: 5, length: '58%', offsetCenter: [0, 0],
+          itemStyle: { color: color, shadowColor: 'currentColor', shadowBlur: 8 } },
+        axisTick: { distance: -14, splitNumber: 5, length: 5, lineStyle: { color: '#cbd5e1', width: 1 } },
+        splitLine: { distance: -14, length: 10,
+          lineStyle: { color: 'rgba(22, 163, 74, .28)', width: 2 } },
+        axisLabel: { distance: 14, color: AXIS_LABEL, fontSize: 10,
+          formatter: function (v) { return Math.round(v); } },
+        title: { offsetCenter: [0, '74%'], color: AXIS_LABEL, fontSize: 12 },
+        detail: { formatter: hasValue ? '{value}' : '--', color: hasValue ? color : '#9ca3af',
+          fontSize: 26, offsetCenter: [0, '42%'], fontFamily: 'Microsoft YaHei', fontWeight: 700 },
+        data: [{ value: hasValue ? d.strain : 0, name: UNIT }]
+      }]
+    };
+  }
+  if (HAS_ECHARTS) {
+    gaugeChart.setOption(gaugeOption({ strain: 0, threshold: INITIAL_THRESHOLD, device_health: { state: 'online' } }),
+      { notMerge: true });
+  }
+
+  /* ---- 近段采样迷你面积图（history 截尾，不造数） ---- */
+  function miniOption(times, vals) {
+    return {
+      animationDuration: 600, animationDurationUpdate: 260, animationEasingUpdate: 'cubicOut',
+      grid: { left: 42, right: 20, top: 12, bottom: 20 },
+      xAxis: { type: 'category', data: times, boundaryGap: false,
+        axisLine: { lineStyle: { color: AXIS_LINE } }, axisTick: { show: false },
+        axisLabel: { color: AXIS_LABEL, fontSize: 10, interval: 'auto',
+          formatter: function (v) { return String(v).slice(14); } } },
+      yAxis: { type: 'value', scale: true, axisLine: { show: false }, axisTick: { show: false },
+        splitLine: { lineStyle: { color: SPLIT_LINE } },
+        /* 容器从旧大屏的 90px 变成 196px 后，ECharts 会自动多给刻度与小数位，
+           相邻刻度文字会贴成一串（实测 91.5090.5089.50）。固定 1 位小数 + 只分 3 档 + margin 6 解决。 */
+        splitNumber: 3,
+        axisLabel: { color: AXIS_LABEL, fontSize: 10, margin: 6,
+          /* 整数刻度显示 "81"、半刻度显示 "81.5"：既避免 ECharts 自动给多位小数造成的叠字，
+             又不会像无脑 toFixed(1) 那样把整数写成 "81.0"（白底上纯噪声）。 */
+          formatter: function (v) { var n = Number(v); return (Math.round(n) === n) ? String(n) : n.toFixed(1); } } },
+      tooltip: Object.assign({ trigger: 'axis' }, TOOLTIP, {
+        formatter: function (params) {
+          var p = params[0]; if (!p) return '';
+          return esc(p.axisValue) + '<br/><span style="color:#16a34a">应变指标</span> <b>' +
+                 Number(p.data).toFixed(2) + '</b>';
+        }
+      }),
+      series: [{
+        type: 'line', data: vals, smooth: true, showSymbol: false, sampling: 'lttb',
+        lineStyle: { color: '#16a34a', width: 1.6 },
+        itemStyle: { color: '#16a34a' },
+        areaStyle: { color: areaGradient(0.28) }
+      }]
+    };
+  }
+  if (HAS_ECHARTS) miniChart.setOption(miniOption([], []), { notMerge: true });
+
+  /* ====================================================================
+     ③ 主刷新循环：每 1 秒轮询 /api/data，只更新本页存在的 DOM
+     ==================================================================== */
+  async function refresh() {
+    try {
+      var r = await fetch('/api/data');
+      if (r.status === 401) { window.location.href = '/login'; return; }
+      if (!r.ok) throw new Error('请求失败：' + r.status);
+      var d = await r.json();
+      var alarms = d.alarms || [];
+
+      /* ---- 设备在线判定与风险分级 ---- */
+      var h = d.device_health || {};
+      var isOnline = h.state !== 'offline';
+      var hasValue = isOnline && d.strain !== null && d.strain !== undefined;
+      var risk = riskOf(d.strain, d.threshold, isOnline);
+      var isSim = d.source === 'sim';
+      var srcText = isSim ? '模拟器' : '串口（真实设备）';
+
+      /* ---- 指标卡：当前指标（离线显示 -- 并给出原因） ---- */
+      if (hasValue) setNum($('statStrain'), d.strain, { dec: 2 }); else setNum($('statStrain'), null);
+      var note = $('statStrainNote');
+      if (isOnline) {
+        var rateText = (d.rate === null || d.rate === undefined) ? '--' : ((d.rate > 0 ? '+' : '') + Number(d.rate).toFixed(2));
+        note.textContent = risk.label + ' · 变化率 ' + rateText;
+        note.style.color = SEV[risk.sev].color;
+      } else {
+        note.textContent = '离线读数不可用';
+        note.style.color = '';
+      }
+      /* 离线横幅：原因取自 h.last_error / h.timeout_count，写在页面上而不是糊过去 */
+      var offBox = $('trendOffline');
+      if (isOnline) {
+        offBox.hidden = true;
+      } else {
+        offBox.hidden = false;
+        setText($('trendOfflineText'),
+          '设备离线（' + (h.device_id || d.device_id || '设备标识未知') + '），当前指标与仪表盘读数为 --。' +
+          '原因：' + offlineReason(h));
+      }
+
+      /* ---- 指标卡：阈值 / 周期 / 最后采样 ---- */
+      setText($('statThreshold'), d.threshold);
+      setNum($('statInterval'), d.interval, { fmt: function (v) { return v + ' 秒'; } });
+      setText($('statLast'), d.last_sample_time || '--');
+      setText($('statSamples'), String(d.sample_count || 0));
+      setText($('gaugeThreshold'), d.threshold);
+      setText($('trendFoot'), d.last_sample_time || '--');
+      setText($('trendSource'), srcText);
+
+      /* ---- 仪表盘：整体重设（量程/刻度带/指针色按当前阈值与风险等级生成） ---- */
+      if (HAS_ECHARTS) {
+        var gaugeSig = [hasValue ? d.strain : 'na', d.threshold, risk.sev].join('/');
+        if (gaugeSig !== chartSig.gauge) {
+          chartSig.gauge = gaugeSig;
+          gaugeChart.setOption(gaugeOption(d), { notMerge: true });
+        }
+      }
+      setText($('gaugeValue'), hasValue ? d.strain.toFixed(2) : '--');
+
+      /* ---- 趋势折线图（含 markLine 阈值同步） ---- */
+      var hist = d.history || [];
+      var times = hist.map(function (i) { return i.time; });
+      var vals = hist.map(function (i) { return i.strain; });
+      if (HAS_ECHARTS) {
+        var lineSig = d.threshold + '|' + times.length + '|' + times[times.length - 1] + '|' + (vals[vals.length - 1] || 0);
+        if (lineSig !== chartSig.line) {
+          chartSig.line = lineSig;
+          lineChart.setOption({
+            xAxis: { data: times },
+            series: [{ data: vals, markLine: {
+              data: [{ yAxis: d.threshold, name: '阈值' }],
+              label: { formatter: '阈值 ' + d.threshold } } }]
+          });
+        }
+      }
+      setText($('trendSpan'), vals.length ? ('共 ' + vals.length + ' 个采样点') : '等待采样');
+      var cc = $('chartConn');
+      if (cc) {
+        cc.className = 'conn idle';
+        cc.textContent = vals.length === 0 ? '等待采样数据…' : '';
+      }
+
+      /* ---- 近段采样迷你面积图（仅取 history 截尾，不额外造数） ---- */
+      var tail = hist.slice(-30);
+      var mTimes = tail.map(function (i) { return i.time; });
+      var mVals = tail.map(function (i) { return i.strain; });
+      if (HAS_ECHARTS) {
+        var miniSig = mTimes.length + '|' + mTimes[mTimes.length - 1] + '|' + (mVals[mVals.length - 1] || 0);
+        if (miniSig !== chartSig.mini) {
+          chartSig.mini = miniSig;
+          miniChart.setOption(miniOption(mTimes, mVals), { notMerge: true });
+        }
+      }
+      setText($('miniSpan'), tail.length >= 2
+        ? (String(mTimes[0]).slice(11) + ' → ' + String(mTimes[mTimes.length - 1]).slice(11))
+        : '最近历史点');
+      setNum($('miniCount'), d.sample_count || 0, { dec: 0, suffix: ' 次' });
+
+      /* ---- 顶栏状态区（全站一致：连接状态 / 模拟徽章 / 待处置铃铛） ---- */
+      var pending = alarms.filter(function (a) { return a.status === '未处理'; }).length;
+      bg().setShellSim(isSim);
+      bg().setShellConn(isSim ? 'sim' : 'ok', isSim ? '模拟数据源 · 每秒刷新' : '数据连接正常');
+      bg().setShellBell(pending);
+    } catch (e) {
+      console.error(e);
+      var ccErr = $('chartConn');
+      if (ccErr) { ccErr.className = 'conn error'; ccErr.textContent = '接口断开'; }
+      bg().setShellConn('error', '接口断开');
+    }
+  }
+
+  /* ---------------- 启动 ---------------- */
+  resizeChartsSoon();
+  window.addEventListener('resize', resizeCharts);
+  window.addEventListener('load', resizeCharts);          // 字体/图片加载完会再触发一次重排
+  refresh();
+  window.setInterval(refresh, 1000);
+})();
+</script>
+
+{# 共享骨架行为：桌面收起/展开 + localStorage 记忆 + 移动端抽屉 #}
+{{ shell.shell_scripts() }}
+</body>
+</html>

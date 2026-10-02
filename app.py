@@ -12,6 +12,7 @@
 from flask import Flask, request, session, redirect, render_template, jsonify, Response, url_for
 from functools import wraps
 import io
+import re
 import secrets
 import threading
 import time
@@ -330,6 +331,27 @@ def _csv_response(header, rows, filename):
     return response
 
 
+# ================= 手机端：/dashboard（3D 页）不再展示 =================
+# 口径：手机端取消 3D 界面 —— 请求/访问 /dashboard 一律转到 /trend（实时趋势），
+#       桌面端不做任何修改（/dashboard 仍是 3D 数字孪生页）。
+# 两层实现（互补，互不冲突）：
+#   ① 服务端：真实手机/平板的 User-Agent 命中 → 302，连 3D 页面都不下发（手机端不白跑 three.js）；
+#   ② 客户端：static/js/mobile-redirect.js 按视口宽度兜住 ① 漏掉的窄屏窗口
+#      （手机横屏可能报桌面 UA；桌面把窗口拖窄时布局本来也已切到 ≤768px 手机档）。
+# 断点 768px 与共享骨架的既有口径一致：_shell.html 的 MOBILE_W（含 ≤768px 手机档
+# 媒体查询）、dashboard.html 的 window.innerWidth <= 768。static/app.css 里的
+# `@media (max-width: 760px)` 是旧大屏版式（.mobile-nav / #bigscreen）的遗留档位，
+# 与 .sh-* 骨架无关，不参与这里的判断。
+MOBILE_BREAKPOINT_PX = 768
+MOBILE_UA_RE = re.compile(r"Mobile|Mobi|Android|iPhone|iPod|iPad|IEMobile|Opera Mini|Windows Phone",
+                          re.IGNORECASE)
+
+
+def _is_mobile_request():
+    """按 User-Agent 判断本次请求是否来自手机/平板（只看 UA，不改任何桌面端行为）。"""
+    return bool(MOBILE_UA_RE.search(request.headers.get("User-Agent", "") or ""))
+
+
 # ================= 页面路由 =================
 @app.route("/")
 def index():
@@ -358,6 +380,15 @@ def logout():
 @app.route("/dashboard")
 @login_required
 def dashboard():
+    """3D 监测页（桌面端）。手机端取消 3D 界面：直接转 /trend，不再下发 3D 页面。
+
+    放在视图函数内（而不是 before_request）是有意的：
+      · 鉴权仍然先由 @login_required 生效，未登录拿到的是 302 → /login，口径不变；
+      · 只有真正落到这个页面的请求才做 UA 判断，其它路由零额外开销。
+    客户端兜底见 templates/dashboard.html 的 <head> 引入 /static/js/mobile-redirect.js。
+    """
+    if _is_mobile_request():
+        return redirect("/trend")
     return render_template("dashboard.html", user=session["user"],
                            threshold=simulator.latest["threshold"],
                            csrf_token=_csrf_token(), unit=UNIT)
@@ -367,15 +398,45 @@ def dashboard():
 @login_required
 def settings_page():
     """系统设置页，用于调整报警阈值和采集周期。"""
-    return render_template("settings.html", csrf_token=_csrf_token(), unit=UNIT)
+    # P1：补传 user，供共享骨架 _shell.html 的侧栏/顶栏显示当前登录用户与退出入口
+    return render_template("settings.html", user=session["user"],
+                           csrf_token=_csrf_token(), unit=UNIT)
 
 
 @app.route("/history")
 @login_required
 def history_page():
     """历史记录页：点击主画面入口进入，点返回回主画面"""
-    return render_template("history.html", threshold=simulator.latest["threshold"],
+    # P1：补传 user，同上（模板上下文补齐，不改任何业务口径）
+    return render_template("history.html", user=session["user"],
+                           threshold=simulator.latest["threshold"],
                            csrf_token=_csrf_token(), unit=UNIT)
+
+
+# ---------- P1 新增页面路由（只加页面，不改任何既有路由/API/鉴权/业务逻辑） ----------
+@app.route("/trend")
+@login_required
+def trend_page():
+    """实时趋势：桥梁受载趋势图 / 阈值仪表盘 / 近段采样迷你图（自大屏页搬家）。"""
+    return render_template("trend.html", user=session["user"], threshold=simulator.latest["threshold"],
+                           csrf_token=_csrf_token(), unit=UNIT)
+
+
+@app.route("/alarms")
+@login_required
+def alarms_page():
+    """报警中心：报警跑马灯 / 处置队列 / 分级统计环形图（自大屏页搬家）。"""
+    return render_template("alarms.html", user=session["user"], threshold=simulator.latest["threshold"],
+                           csrf_token=_csrf_token(), unit=UNIT)
+
+
+@app.route("/device")
+@login_required
+def device_page():
+    """设备与数据源：设备健康度 / 系统运行 / 心跳与最近异常（自大屏页搬家）。"""
+    return render_template("device.html", user=session["user"], threshold=simulator.latest["threshold"],
+                           csrf_token=_csrf_token(), unit=UNIT)
+# ---------- P1 新增页面路由结束 ----------
 
 
 # ================= 数据接口 =================

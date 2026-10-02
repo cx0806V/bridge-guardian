@@ -21,7 +21,7 @@
       <Box style={{ flex: 1, flexDirection: 'column', gap: 14, background: '#E8EFF8', borderRadius: 10, padding: 20 }}>
         <Text style={{ fontSize: 22, fontWeight: 'bold', color: '#0E3F8C' }}>工程化</Text>
         <Box style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
-          <Text style={{ fontSize: 60, fontWeight: 'bold', color: '#1E4FA8' }}>28</Text>
+          <Text style={{ fontSize: 60, fontWeight: 'bold', color: '#1E4FA8' }}>101</Text>
           <Text style={{ fontSize: 18, color: '#4A5568' }}>项自动化测试全绿</Text>
         </Box>
         <Text style={{ fontSize: 17, color: '#4A5568', lineHeight: 1.6 }}>规则引擎 / 数据层 / 鉴权 / API / 设备心跳 / 串口链路，覆盖核心链路</Text>

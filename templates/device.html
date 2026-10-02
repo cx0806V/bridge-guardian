@@ -1,0 +1,463 @@
+{%- import "_shell.html" as shell -%}
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>设备与数据源 - 桥体卫士</title>
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23ffffff'/%3E%3Cpath d='M5 23h22M5 23c3-6 7.5-9 11-9s8 3 11 9M16 14V7M9 7h14' fill='none' stroke='%2316a34a' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css">
+  {# 共享骨架样式（侧栏/顶栏/抽屉），全站只有 _shell.html 一份定义 #}
+  {{ shell.shell_head() }}
+  <style>
+  /* 本页局部样式：只写「布局 / 尺寸 / 触摸目标」，配色一律交给 static/app.css 第 20 节与 _shell.html，
+     类名统一 dv- 前缀，不写任何 .sh-* 选择器。
+     ⚠️ 页面级缩放（.sh-page 作用域内的 --pg-s / --fs-* 覆盖）是「两页铺满」方案的一部分，
+        与 templates/alarms.html 的同名块一致：只在这两页生效，侧栏/顶栏与其它页面字号完全不变。
+        改这里请同步改 alarms.html，否则两页会出现字号跳变。 */
+
+  /* ---------- A. 页面级流体缩放（只作用于本页 .sh-page 子树） ----------
+     --pg-s = 1 → 1.25：1440→2592 视口宽度线性放大，上限 1.25。
+     1440=1.000 · 1680=1.208 · 1920=1.25 · ≥2592=1.25（2560 实测 1.25）。
+     1) --fs-* 在这里覆盖：app.css 在 :root 声明、本文件的 <style> 在 app.css 之后，
+        而 div.sh-page（0,1,1）特异性高于 :root（0,1,0）→ 覆盖有效，
+        且只沿 .sh-page 子树继承，不会反向影响侧栏/顶栏（它们不在 .sh-page 里）。
+     2) 页面自己写的像素字号一律写成 calc(Npx * var(--pg-s))。
+     3) --dv-stat-v 是采集参数卡的大数字，--dv-time-v 是 19 字符时间戳专用小一号字号。
+     ⚠️ 两条踩过的坑，改公式前先读：
+        · 不能写 (100vw - 1440px) * 0.00018：CSS calc 里「长度×长度」算出的是面积，
+          浏览器判为无效值 —— 实测会让 --pg-s 在计算值阶段失效，页面上所有
+          calc(Npx * var(--pg-s)) 全部退化成 0（卡片内边距、栅格间距、键值行高一起消失）。
+          必须用「长度 ÷ 长度」。
+        · 上限要写在 clamp 里：CSS 侧原先没有上限，2560 宽时 --pg-s 会涨到 1.78，字号过大。 */
+  .sh-page {
+    --pg-s: clamp(1, calc((100vw - 1440px) / 1152px + 1), 1.25);
+    --fs-xs: calc(11px * var(--pg-s));
+    --fs-sm: calc(12px * var(--pg-s));
+    --fs-md: calc(13px * var(--pg-s));
+    --fs-lg: calc(15px * var(--pg-s));
+    --fs-xl: calc(22px * var(--pg-s));
+    --dv-stat-v: calc(30px * var(--pg-s));
+    --dv-time-v: calc(20px * var(--pg-s));   /* 「最后采样」是 19 字符时间戳，比其它数字小一号才不换行/不溢出 */
+    /* 三栏面板的高度上限：视口越高可以越高，但上下都夹住（都乘 --pg-s）。
+       ⚠️ 关键是上限要跟【视口高】挂钩，不能只跟 --pg-s（那是按视口宽算的）：
+       2560×1440 时按宽度算出来的上限是 600px，结果 4 行键值摊在 934px 的卡片里、
+       每行 209px，四行数据飘在大片空白中；改成按高度给额度后同样场景收到约 657px。
+       下限 340px 保证小视口不会被压扁；上限 660px 保证大视口不会拉散。 */
+    --pg-max-panel: min(calc(660px * var(--pg-s)),
+                        max(calc(340px * var(--pg-s)), calc(100vh - 380px)));
+    /* 铺满高度：视口高 − 顶栏 64px − .sh-content 上下 padding(18+26) − 2px 余量。
+       ⚠️ 光有 min-height 不够：必须有子项 flex:1 才会真长起来（见 .dv-stack 与 .dv-3col）。 */
+    min-height: calc(100vh - 110px);
+    max-width: none;                         /* 取消 shell 的 1440px 上限，横向铺满可用宽度 */
+  }
+  /* 纵向铺满：.dv-stack 长到 .sh-page 的 min-height，三张面板卡（.dv-3col）吃掉剩余高度，
+     卡片内部再把多出来的高度均分到各键值行（行距变大，而不是底部留一片白）。 */
+  /* ⚠️ .dv-stack 必须是 flex: 0 0 auto（不可伸不可缩）：高度由 .sh-page 的 min-height 经
+     align-items:stretch 给它，自己再带 flex-grow/shrink 会按 flex-basis 参与伸缩、把子项关系搅乱。
+     高度分配只交给下面 .dv-3col 一条。 */
+  .dv-stack { display: flex; flex-direction: column; gap: calc(16px * var(--pg-s)); flex: 0 0 auto; }
+  .dv-stack > .dv-sec,
+  .dv-stack > .dv-note,
+  .dv-stack > .dv-stats,
+  .dv-stack > .dv-foot { flex: 0 0 auto; }   /* 标题/横幅/指标带/页脚按内容自然高度 */
+  /* 三栏面板吃掉剩余高度。⚠️ flex-grow 必须长写：用简写 flex: 1 1 auto 时实测没生效
+     （computed 停在 flex: 0 1 auto，面板压在 280px、底部空 379px）。
+     高度范围与视口挂钩：最高 = 视口高 − 380px（1680×1003 时 ≈550px、每行键值 ≈78px；
+     1920×1080 时 ≈610px、≈88px），再乘 --pg-s。不限高时卡片会被拉到 587px 以上、内部发虚。
+     行内三张卡靠 .dv-3col 的 align-items:stretch 等高。 */
+  .dv-stack > .dv-3col { flex-grow: 1; flex-shrink: 1; flex-basis: auto;
+    min-height: calc(240px * var(--pg-s));
+    max-height: calc(var(--pg-max-panel, 560px) * var(--pg-s)); }
+  /* 连接状态卡的内容最少（一行状态 + 一行元信息），卡片被拉高后这点内容居中放，
+     上方留白与下方留白对称，比「顶部贴齐 + 底部一大片空」更像仪表盘的正常留白。 */
+  .dv-hero { justify-content: space-evenly; }
+  .dv-sec { margin: 0; font-size: var(--fs-sm); font-weight: 700; color: #6b7280; letter-spacing: .02em; }
+  .dv-stats { display: grid; gap: calc(14px * var(--pg-s));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .dv-stat { display: flex; flex-direction: column; gap: 2px; min-width: 0;
+    padding: calc(16px * var(--pg-s)) calc(18px * var(--pg-s)); }
+  .dv-stat-t { font-size: calc(12.5px * var(--pg-s)); color: #6b7280; display: flex; align-items: center; gap: 6px; }
+  .dv-stat-v { font-size: var(--dv-stat-v); font-weight: 700; line-height: 1.25; color: #1f2937;
+    font-variant-numeric: tabular-nums; }
+  /* 「最后采样」是 19 字符时间戳：按 30px 起算会换行（实测整条指标带被顶高一倍到 169px）。
+     用略小一号的字号 + 不换行 + 溢出省略号，保证四张卡等高、且文字不会捅出卡片。 */
+  .dv-stat-v.time-v { font-size: var(--dv-time-v); white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .dv-stat-s { font-size: var(--fs-sm); color: #6b7280; }
+  /* align-items: stretch → 三张卡等高；卡片内部用 flex 把多余高度交给第一个子块（标题固定、内容居中） */
+  .dv-3col { display: grid; gap: calc(16px * var(--pg-s)); grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+    align-items: stretch; min-height: calc(240px * var(--pg-s)); }
+  .dv-3col > .card { display: flex; flex-direction: column; min-width: 0;
+    padding: calc(16px * var(--pg-s)) calc(18px * var(--pg-s)); }
+  /* 键值行保持自然高度：卡片被拉高后由行内 stretch 让「卡片」等高即可，
+     行自己再 flex:1 会把 4 行摊成每行 141~209px 的大片空白（实测）。
+     多出来的高度留白在卡片底部，仪表密度保持不变。 */
+  .dv-3col > .card > .dv-kv { flex: 0 0 auto; }
+  .dv-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; flex: 0 0 auto; }
+  .dv-head h3 { margin: 0; }
+  .dv-sub { font-size: var(--fs-sm); color: #6b7280; font-weight: 400; }
+  .dv-glyph { width: 16px; height: 16px; flex: 0 0 auto; color: #16a34a; }
+  .dv-hero { display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; justify-content: center; }
+  .dv-badge { font-size: calc(19px * var(--pg-s)); }
+  .dv-reason { font-size: var(--fs-md); line-height: 1.6; color: #6b7280; }
+  .dv-reason b { color: #1f2937; }
+  .dv-metarow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 10px; flex: 0 0 auto; }
+  .dv-kv { display: flex; justify-content: space-between; gap: 12px; font-size: var(--fs-md);
+    padding: calc(9px * var(--pg-s)) 0; border-bottom: 1px dashed #e5e8eb; align-items: center; }
+  .dv-kv:last-child { border-bottom: 0; }
+  .dv-kv .k { color: #6b7280; white-space: nowrap; }
+  .dv-kv .v { color: #1f2937; text-align: right; font-variant-numeric: tabular-nums; word-break: break-word; }
+  .dv-note { display: flex; gap: 10px; align-items: flex-start; font-size: var(--fs-md); line-height: 1.55;
+    padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(190, 18, 60, .35);
+    background: rgba(190, 18, 60, .06); color: #be123c; }
+  .dv-note[hidden] { display: none; }
+  .dv-foot { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: var(--fs-sm); color: #6b7280; padding: 2px 2px 0; }
+  .dv-foot b { color: #1f2937; }
+  @media (max-width: 768px) {
+    .dv-stat-v { font-size: 21px; }
+    /* 触摸目标 ≥44×44px */
+    .dv-foot a, .dv-metarow a { min-height: 44px; display: inline-flex; align-items: center; }
+  }
+  /* 手机端与打印：还原为原尺寸（单列堆叠、不拉高、字号回到 app.css 口径），避免小屏破版与多页打印 */
+  @media (max-width: 768px), print {
+    .sh-page { --pg-s: 1; min-height: 0; min-height: auto; }
+    .dv-stack { display: flex; flex-direction: column; flex: 0 0 auto; }
+    /* ⚠️ 面板高度限制必须在这里彻底解除，否则手机端会「文字互相压住」（实测 320~440 宽全部复现）。
+       两个坑，改之前先读：
+       ① 【特异性】桌面的限高规则写在 `.dv-stack > .dv-3col`（0,2,0），
+          这里如果只写 `.dv-3col`（0,1,0），无论媒体查询是否命中都【永远赢不了】——
+          实测 computed 一直是 min-height:240px / max-height:340px，本行原本的
+          `min-height: 0` 就是这样一句从未生效的死代码。所以选择器必须与桌面规则同形。
+       ② 【两个属性要成对解除】`.dv-3col` 是 grid、卡片是它的网格项：
+          卡片默认 min-height:auto（不会压到比内容矮），但容器一旦被 max-height 夹住，
+          卡片就会被夹到比内容还矮，而卡片 overflow:visible →
+          键值行直接漏到卡片外面，压住紧随其后的「口径说明」与页脚（实测漏出 4~15px）。
+       同款布局的 /alarms 页早已这么处理（见 alarms.html 手机档的 `.pa-table { max-height: none }`），
+       本页此前漏了这一步。 */
+    .dv-stack > .dv-3col { min-height: auto; max-height: none; }
+    .dv-3col > .card { display: block; }
+    .dv-3col > .card > .dv-kv { flex: 0 0 auto; }
+  }
+  </style>
+</head>
+<body class="sh-body">
+
+{# ------------------------------------------------------------------
+   设备与数据源页（搬家来源 templates/dashboard.html 左栏「设备健康度 / 系统运行」
+   + 顶栏数据源徽章与连接灯 + 指标带若干）
+   搬家 id 一个未改名： #healthDevice #healthSource #healthState #healthTimeout
+                     #healthHeartbeat #healthError #uptimeNum #sampleCount
+                     #sensorStatus #sourceBadge #connLight #uptimeShow
+                     #heroSamples #heroUptime #intervalShow #lastSampleTime
+                     #footSource #footClock #footLast
+   未搬：#donut（归 /alarms）、#slValue/#slDot（3D 跨中测点读数，留在 /dashboard）
+   红线：数值只来自 /api/data；设备离线时读数为 -- 并给出原因，不伪造在线状态。
+   ------------------------------------------------------------------ #}
+
+<div class="sh-layout">
+{{ shell.shell_sidebar('device') }}
+
+<div class="sh-main">
+  {{ shell.shell_topbar('设备与数据源', '连接状态 · 设备健康度 · 采集参数', 'device') }}
+
+  <main class="sh-content">
+    <div class="sh-page dv-stack">
+
+      <!-- ============ 离线 / 接口异常横幅（默认隐藏；如实给出原因，不伪造在线） ============ -->
+      <div class="dv-note" id="devNotice" hidden role="status">
+        <svg class="dv-glyph" style="color:currentColor" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 4.6l8.4 14.8H3.6z"/><path d="M12 9.6v4.2"/><path d="M12 16.6h.01"/>
+        </svg>
+        <span id="devNoticeText">设备状态加载中…</span>
+      </div>
+
+      <!-- ============ 采集参数（全部来自 /api/data，每秒刷新） ============ -->
+      <h2 class="dv-sec">采集参数</h2>
+      <div class="dv-stats">
+        <div class="card stat-card dv-stat">
+          <div class="dv-stat-t">
+            <svg class="dv-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 15h16"/><path d="M12 4v11"/><path d="M8.6 7.4L12 4l3.4 3.4"/>
+            </svg>
+            报警阈值
+          </div>
+          <div class="dv-stat-v num" id="devThreshold">{{ threshold }}</div>
+          <div class="dv-stat-s">可在系统设置中调整</div>
+        </div>
+
+        <div class="card stat-card dv-stat">
+          <div class="dv-stat-t">
+            <svg class="dv-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.2"/><path d="M12 7.6V12l3 1.9"/>
+            </svg>
+            采集周期
+          </div>
+          <div class="dv-stat-v num" id="intervalShow">-- 秒</div>
+          <div class="dv-stat-s">设备采样间隔</div>
+        </div>
+
+        <div class="card stat-card dv-stat">
+          <div class="dv-stat-t">
+            <svg class="dv-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/>
+            </svg>
+            最后采样
+          </div>
+          <div class="dv-stat-v num time-v" id="lastSampleTime">--</div>
+          <div class="dv-stat-s" id="lastSampleNote">离线期间显示 --</div>
+        </div>
+
+        <div class="card stat-card dv-stat">
+          <div class="dv-stat-t">
+            <svg class="dv-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 19V5M4 19h16"/><path d="M8 19v-6M12.6 19V8M17.2 19v-4"/>
+            </svg>
+            累计采样
+          </div>
+          <div class="dv-stat-v num" id="heroSamples">0 次</div>
+          <div class="dv-stat-s">本次运行累计写入的采样条数</div>
+        </div>
+      </div>
+
+      <!-- ============ 连接状态 / 设备健康度 / 系统运行 ============ -->
+      <div class="dv-3col">
+        <section class="card">
+          <div class="dv-head">
+            <h3>连接状态</h3>
+            <span class="dv-sub">来自 <b>/api/data</b> 的 device_health</span>
+          </div>
+          <div class="dv-hero">
+            <span class="health-state state-unknown dv-badge" id="healthState">--</span>
+            <div class="dv-reason">最近异常：<b id="healthError">无</b></div>
+          </div>
+          <div class="dv-metarow">
+            <span class="source-badge" id="sourceBadge">数据源：--</span>
+            <span class="conn" id="connLight">运行 <span id="uptimeShow">--</span></span>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="dv-head">
+            <h3>设备健康度</h3>
+            <span class="dv-sub">离线时读数显示 --</span>
+          </div>
+          <div class="dv-kv"><span class="k">设备标识</span><span class="v" id="healthDevice">--</span></div>
+          <div class="dv-kv"><span class="k">数据来源</span><span class="v" id="healthSource">--</span></div>
+          <div class="dv-kv"><span class="k">连续超时</span><span class="v" id="healthTimeout">--</span></div>
+          <div class="dv-kv"><span class="k">最近心跳</span><span class="v" id="healthHeartbeat">--</span></div>
+        </section>
+
+        <section class="card">
+          <div class="dv-head">
+            <h3>系统运行</h3>
+            <span class="dv-sub">服务侧统计，与设备在线状态解耦</span>
+          </div>
+          <div class="dv-kv"><span class="k">运行时长</span><span class="v num" id="uptimeNum">--</span></div>
+          <div class="dv-kv"><span class="k">运行时长（顶栏口径）</span><span class="v num" id="heroUptime">--</span></div>
+          <div class="dv-kv"><span class="k">累计采样</span><span class="v num" id="sampleCount">0 次</span></div>
+          <div class="dv-kv"><span class="k">数据源状态</span><span class="v" id="sensorStatus">--</span></div>
+        </section>
+      </div>
+
+      <!-- ============ 口径说明（离线读数为 --，原因取自 h.last_error） ============ -->
+      <p class="dv-sec" style="font-weight:400;line-height:1.6">
+        口径说明：设备离线时读数为 <b>--</b>，原因取自 <b>h.last_error</b>（如「心跳超时」）与 h.timeout_count，
+        不伪造在线状态；运行时长与累计采样是服务侧计数，与设备是否在线无关，仍按真实值显示。
+      </p>
+
+      <!-- ============ 页脚：数据源 / 采样时刻 / 刷新时刻（相对应变指标，无量纲） ============ -->
+      <div class="dv-foot">
+        <span>数据源 <b id="footSource">--</b></span>
+        <span>· 最后采样 <b id="footClock">--</b></span>
+        <span>· 最近刷新 <b id="footLast">--</b></span>
+        <span>· 单位口径：{{ unit }}（无量纲，非工程微应变）</span>
+        <span>· 缩尺模型受载变化模拟</span>
+      </div>
+
+    </div>
+  </main>
+</div>
+</div><!-- /.sh-layout -->
+
+<script>
+/* ====================================================================
+   设备与数据源页脚本 —— 从 templates/dashboard.html 内联脚本搬家
+   搬家内容：设备健康度更新分支（h.device_id / h.text / h.state / h.timeout_count /
+             h.last_heartbeat / h.last_error 全部原样口径）、sourceBadge 的 sim/serial 文案、
+             fmtUptime、setNum、每秒 refresh()（401 → /login）
+   本页无图表：不加载 echarts，也不引用 #donut / #slValue / #slDot。
+   红线：数值只来自 /api/data；设备离线一律显示 -- 并给出原因。
+   ==================================================================== */
+(function () {
+  'use strict';
+
+  /* ---------------- 0. 基础工具（与 dashboard 同口径） ---------------- */
+  function $(id) { return document.getElementById(id); }
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function setText(el, txt) { if (el) el.textContent = txt; }
+  function reduceMotion() {
+    return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }
+  /* 顶栏状态区由 _shell.html 的 shell_scripts() 提供，它在页面脚本【之后】执行，
+     所以必须调用时再取（不能在脚本开头缓存，否则永远拿到空实现）。 */
+  var BG_NOOP = { setShellSim: function () {}, setShellConn: function () {}, setShellBell: function () {} };
+  function bg() { return window.BGShell || BG_NOOP; }
+
+  function fmtUptime(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    return pad2(Math.floor(sec / 3600)) + ':' + pad2(Math.floor(sec % 3600 / 60)) + ':' + pad2(sec % 60);
+  }
+
+  /* 离线原因：只陈述后端给的事实（last_error / timeout_count），不臆测、不美化。
+     timeout_count 仅在 > 0 时附加，避免出现「连续超时 0 次」这种反直觉的描述。 */
+  function offlineReason(h) {
+    var why = (h && h.last_error) ? String(h.last_error) : '未收到心跳';
+    var tc = h ? Number(h.timeout_count) : NaN;
+    if (isFinite(tc) && tc > 0) why += '（连续超时 ' + tc + ' 次）';
+    return why;
+  }
+
+  /* ---------------- 数字 count-up（reduced-motion 下直接赋值） ---------------- */
+  var numPrev = Object.create(null);
+  var numAnims = Object.create(null);
+  function setNum(el, value, opt) {
+    if (!el) return;
+    opt = opt || {};
+    if (value === null || value === undefined || !isFinite(value)) { el.textContent = '--'; numPrev[el.id] = null; return; }
+    var dec = opt.dec || 0;
+    var fmt = opt.fmt || function (v) { return v.toFixed(dec) + (opt.suffix || ''); };
+    var key = el.id || 'anon';
+    var prev = numPrev[key];
+    numPrev[key] = value;
+    var target = fmt(value);
+    var raf = window.requestAnimationFrame;
+    if (reduceMotion() || !raf || prev === null || prev === undefined) { el.textContent = target; return; }
+    if (Math.abs(prev - value) < Math.pow(10, -dec) / 2) { el.textContent = target; return; }
+    if (numAnims[key]) { raf.call(window, numAnims[key]); numAnims[key] = null; }
+    var from = prev, span = value - prev, t0 = null, DUR = opt.dur || 620;
+    el.classList.add('flash');
+    window.setTimeout(function () { el.classList.remove('flash'); }, 780);
+    numAnims[key] = function step(ts) {
+      if (t0 === null) t0 = ts;
+      var p = Math.min(1, (ts - t0) / DUR);
+      var e = 1 - Math.pow(1 - p, 3);               // easeOutCubic
+      el.textContent = fmt(from + span * e);
+      if (p < 1) { numAnims[key] = step; raf.call(window, step); } else { numAnims[key] = null; }
+    };
+    raf.call(window, numAnims[key]);
+  }
+
+  /* ---------------- 横幅：离线 / 接口异常（如实说明，不静默） ---------------- */
+  function showNotice(msg) {
+    var box = $('devNotice');
+    if (!box) return;
+    box.hidden = false;
+    setText($('devNoticeText'), msg);
+  }
+  function hideNotice() {
+    var box = $('devNotice');
+    if (box) box.hidden = true;
+  }
+
+  /* ====================================================================
+     主刷新循环：每 1 秒轮询 /api/data
+     ==================================================================== */
+  async function refresh() {
+    try {
+      var r = await fetch('/api/data');
+      if (r.status === 401) { window.location.href = '/login'; return; }
+      if (!r.ok) throw new Error('请求失败：' + r.status);
+      var d = await r.json();
+      var alarms = d.alarms || [];
+      var h = d.device_health || {};
+      var isOnline = h.state !== 'offline';
+      var isSim = d.source === 'sim';
+      var srcText = isSim ? '模拟器' : '串口（真实设备）';
+
+      /* ---- 采集参数 ---- */
+      setText($('devThreshold'), d.threshold);
+      setNum($('intervalShow'), d.interval, { fmt: function (v) { return v + ' 秒'; } });
+      if (isOnline) {
+        setText($('lastSampleTime'), d.last_sample_time || '--');
+        setText($('lastSampleNote'), '数据来自 /api/data');
+      } else {
+        /* 离线：当前读数列显示 --，离线前的最后一条记录如实附注，不冒充当前读数 */
+        setText($('lastSampleTime'), '--');
+        setText($('lastSampleNote'), d.last_sample_time
+          ? ('离线前最后一次：' + d.last_sample_time)
+          : '离线期间无新增采样');
+      }
+      setNum($('heroSamples'), d.sample_count || 0, { dec: 0, suffix: ' 次' });
+
+      /* ---- 连接状态（#healthState 原样口径：h.text || d.sensor_status || --） ---- */
+      var st = $('healthState');
+      if (st) {
+        st.textContent = h.text || d.sensor_status || '--';
+        st.className = 'health-state dv-badge ' +
+          (h.state === 'online' ? 'state-online' : (h.state === 'offline' ? 'state-offline' : 'state-unknown'));
+      }
+      setText($('healthError'), h.last_error || '无');
+      setText($('sourceBadge'), '数据源：' + (isSim ? '模拟' : '串口（真实）'));
+      var sb = $('sourceBadge');
+      if (sb) sb.className = 'source-badge' + (isSim ? '' : ' serial');
+      var cl = $('connLight');
+      if (cl) cl.className = isOnline ? 'conn' : 'conn error';
+      setText($('uptimeShow'), fmtUptime(d.uptime || 0));
+
+      /* ---- 设备健康度（离线如实显示，不伪装在线） ---- */
+      setText($('healthDevice'), h.device_id || d.device_id || '--');
+      setText($('healthSource'), srcText);
+      setText($('healthTimeout'), (h.timeout_count === null || h.timeout_count === undefined)
+        ? '--' : h.timeout_count + ' 次');
+      setText($('healthHeartbeat'), isOnline ? (h.last_heartbeat || '--') : '--');
+
+      /* ---- 系统运行 ---- */
+      setNum($('uptimeNum'), d.uptime || 0, { fmt: fmtUptime });
+      setNum($('heroUptime'), d.uptime || 0, { fmt: fmtUptime });
+      setText($('sampleCount'), (d.sample_count || 0) + ' 次');
+      setText($('sensorStatus'), d.sensor_status || '--');
+
+      /* ---- 页脚 ---- */
+      setText($('footSource'), srcText);
+      setText($('footClock'), d.last_sample_time || '--');
+      setText($('footLast'), d.last_sample_time || '--');
+
+      /* ---- 离线横幅：原因全部来自后端字段 ---- */
+      if (isOnline) {
+        hideNotice();
+      } else {
+        showNotice('设备离线（' + (h.device_id || d.device_id || '设备标识未知') + '）：' +
+          '最近心跳与最后采样显示 --，不伪造在线状态。原因：' + offlineReason(h));
+      }
+
+      /* ---- 顶栏状态区（全站一致） ---- */
+      var pending = alarms.filter(function (a) { return a.status === '未处理'; }).length;
+      bg().setShellSim(isSim);
+      bg().setShellConn(isSim ? 'sim' : 'ok', isSim ? '模拟数据源 · 每秒刷新' : '数据连接正常');
+      bg().setShellBell(pending);
+    } catch (e) {
+      console.error(e);
+      var clErr = $('connLight');
+      if (clErr) clErr.className = 'conn error';
+      showNotice('接口断开：无法获取 /api/data，页面显示的是上一次成功刷新的结果。');
+      bg().setShellConn('error', '接口断开');
+    }
+  }
+
+  /* ---------------- 启动 ---------------- */
+  refresh();
+  window.setInterval(refresh, 1000);
+})();
+</script>
+
+{# 共享骨架行为：桌面收起/展开 + localStorage 记忆 + 移动端抽屉 #}
+{{ shell.shell_scripts() }}
+</body>
+</html>

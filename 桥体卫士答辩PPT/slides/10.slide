@@ -16,7 +16,7 @@
           '历史动态阈值，三端一致',
           '硬件本地双重预警',
           '离线可用，不依赖网络',
-          '28 项测试的完整工程化',
+          '101 项测试用例的完整工程化',
         ].map((item, idx) => (
           <Box key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
             <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#FFC107', width: 30 }}>{idx + 1}</Text>
